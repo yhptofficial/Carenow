@@ -12,7 +12,7 @@ have.
 | 3 | Patient data protected with RLS, no cross-user access | **Schema shipped**, enforced in the client adapter today | `supabase/schema.sql` (9 tables, 9 with RLS, 29 policies, 4 RPCs) + `lib/rules.ts` access checks |
 | 4 | Video calls work on Chrome and Safari mobile on a typical 4G connection | **Needs a video provider** | Room lifecycle, join gate, device-permission handling and timers are real; the tile is a placeholder for Daily.co |
 | 5 | Payment failures and no-shows handled (refund or reschedule flow) | **Shipped** | Declined card `0002…`, 3-D Secure `4000…`, cancel sheet with refund rules, no-show refund after 10 minutes, free reschedule |
-| 6 | Doctors manually verified before appearing in listings | **Shipped** | `verified_at` gate in the store, the `public_doctors` view and `book_slot`; `doc-harish-balan` is the unverified fixture |
+| 6 | Doctors manually verified before appearing in listings | **Shipped** | `verified_at` gate in the store, the `public_doctors` view and `book_slot`; `doc-haruna-bala` is the unverified fixture |
 | 7 | Privacy policy, terms and patient consent screen live, reviewed against local health-data regulations | **Pages shipped**, legal review outstanding | `/legal/privacy`, `/legal/terms`, `/onboarding/consent`, `/profile/consent` |
 | 8 | Tested with at least 10 real patients and 3 doctors, no critical bugs open | **Not done** — needs live users | Instrumentation is in place: `audit_log` records every consequential action |
 
@@ -33,7 +33,7 @@ have.
 - 11 verified doctors across 7 specialties, plus 1 unverified profile that is
   invisible in search.
 - Search matches name, specialty, clinical specialty name, symptom keywords and
-  language ("tooth", "panic", "tamil" all work).
+  language ("tooth", "malaria", "igbo" all work).
 - Filter chips: All, General, Skin, Heart, Child, Dental, Women, Mind.
 - Availability: 14-day window, 20-minute slots (45 for psychiatry), today trimmed
   to a 20-minute lead time so a reminder can always be sent.
@@ -99,7 +99,8 @@ group accounts anywhere in the UI or the schema.
    run it once in a staging project first.
 5. **Reminder Edge Function.** `due_reminders` exists; the sender does not.
 6. **Legal review.** Both documents carry an explicit template warning and a
-   placeholder grievance contact.
+   placeholder contact; they reference the Nigeria Data Protection Act 2023 but
+   have not been reviewed by a Nigerian lawyer.
 7. **Admin verification console.** Verification currently happens by editing the
    `doctors` row; the PRD implies a manual process, not necessarily a UI in v1.
 8. **Accessibility audit.** Token contrast, labels and focus states were chosen

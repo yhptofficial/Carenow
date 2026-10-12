@@ -24,7 +24,7 @@ export default function FindPage() {
 function FindFallback() {
   return (
     <div className="app-scroll pt-[max(20px,var(--safe-t))]">
-      <ScreenHeader context="Coimbatore" title="Find a doctor" />
+      <ScreenHeader context="Finding doctors near you" title="Find a doctor" />
     </div>
   );
 }
@@ -61,7 +61,7 @@ function FindScreen() {
   return (
     <div className="app-scroll pt-[max(20px,var(--safe-t))]">
       <ScreenHeader
-        context={`${session?.location ?? "Coimbatore"} · ${store.listDoctors().length} doctors online`}
+        context={`${session?.location ?? "Lagos"} · ${store.listDoctors().length} doctors online`}
         title="Find a doctor"
         initials={session ? initialsOf(session.fullName) : undefined}
         accent={session?.accent ?? "teal"}

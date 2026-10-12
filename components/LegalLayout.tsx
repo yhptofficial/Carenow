@@ -39,9 +39,10 @@ export function LegalLayout({
           <article className="space-y-section">{children}</article>
 
           <Notice tone="warn" icon={<AlertIcon size={18} />} title="This is a template">
-            CareNow v1 is a pre-launch build. Before release, these documents must be reviewed against
-            the health-data and telemedicine rules of every jurisdiction you operate in, and the
-            grievance-officer details replaced with a real named contact.
+            CareNow v1 is a pre-launch build. These documents are written against the Nigeria Data
+            Protection Act 2023, but they must be reviewed by a qualified Nigerian lawyer before
+            release — including naming a Data Protection Officer and registering with the Nigeria
+            Data Protection Commission.
           </Notice>
 
           <p className="pb-6 text-center text-[11px] leading-5 text-ink-muted">

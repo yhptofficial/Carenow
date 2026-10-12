@@ -23,7 +23,7 @@ export function ScreenHeader({
   avatarHref = "/profile",
   sticky = false,
 }: {
-  /** Small secondary line above the title, e.g. "Coimbatore". */
+  /** Small secondary line above the title, e.g. "Lagos · Good morning". */
   context?: ReactNode;
   title: string;
   initials?: string;

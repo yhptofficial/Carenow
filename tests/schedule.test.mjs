@@ -186,6 +186,32 @@ test("specialty ids are unique and fully indexed", () => {
   }
 });
 
+test("every doctor is registered with the MDCN and priced in naira", () => {
+  for (const d of DOCTORS) {
+    assert.equal(d.currency, "NGN", `${d.id} is not priced in naira`);
+    assert.ok(d.city.length > 0, `${d.id} has no practising city`);
+    if (d.verified) {
+      // MDCN full registration, e.g. MDCN/R/41208.
+      assert.match(d.verification.licenceNumber, /^MDCN\/R\/\d{5}$/, `${d.id} licence number`);
+    }
+  }
+});
+
+test("fees sit in the band private Nigerian telemedicine charges", () => {
+  for (const d of DOCTORS) {
+    assert.ok(d.consultationFee >= 3000, `${d.id} is unrealistically cheap`);
+    assert.ok(d.consultationFee <= 30000, `${d.id} is unrealistically expensive`);
+    assert.equal(d.consultationFee % 500, 0, `${d.id} fee should be a round naira figure`);
+  }
+});
+
+test("the catalogue covers Nigeria's languages, not one region's", () => {
+  const spoken = new Set(DOCTORS.flatMap((d) => d.languages));
+  for (const language of ["English", "Yoruba", "Igbo", "Hausa"]) {
+    assert.ok(spoken.has(language), `nobody speaks ${language}`);
+  }
+});
+
 test("every doctor references a real specialty and a positive fee", () => {
   for (const d of DOCTORS) {
     assert.ok(SPECIALTY_BY_ID[d.specialty], `${d.id} has an unknown specialty`);

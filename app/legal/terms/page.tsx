@@ -134,8 +134,8 @@ export default function TermsPage() {
 
       <Clause n={12} heading="Governing law">
         <p>
-          These terms are governed by the laws of the jurisdiction in which CareNow is registered.
-          Consumer rights you have locally are not affected. The exact jurisdiction and a registered
+          These terms are governed by the laws of the Federal Republic of Nigeria, and disputes fall
+          to the Nigerian courts. Consumer rights you have locally are not affected. A registered
           address will be added here before launch.
         </p>
       </Clause>

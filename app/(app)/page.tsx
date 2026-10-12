@@ -48,7 +48,7 @@ export default function HomePage() {
   return (
     <div className="app-scroll pt-[max(20px,var(--safe-t))]">
       <ScreenHeader
-        context={`${session?.location ?? "Coimbatore"} · ${greeting()}`}
+        context={`${session?.location ?? "Lagos"} · ${greeting()}`}
         title={`Hi ${firstName}`}
         initials={initials}
         accent={session?.accent ?? "teal"}

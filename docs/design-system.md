@@ -96,7 +96,7 @@ optional trailing action). Both are sticky and blur the canvas behind them.
 **Search bar** — `SearchBar`. Full pill, white, 1px border, no shadow, magnifier
 on the left, multi-intent placeholder "Specialty, name or symptom". Matching
 covers name, specialty, clinical specialty name, symptom keywords and language,
-so "tooth" finds the dentist and "tamil" finds Tamil-speaking doctors.
+so "tooth" finds the dentist and "igbo" finds Igbo-speaking doctors.
 
 **Filter chips** — `Chip`. Horizontal row: All, General, Skin, Heart, Child,
 Dental, Women, Mind. Active = `primary-tint` fill with `primary-dark` text;

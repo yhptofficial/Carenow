@@ -9,6 +9,7 @@ import { Avatar, Button, Card, Notice } from "@/components/ui";
 import { PrintButton } from "@/components/PrintButton";
 import { AlertIcon, CalendarIcon, ClockIcon, PillIcon, ShieldIcon, VideoIcon } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { timeLabel } from "@/lib/schedule";
 
 /**
@@ -216,9 +217,9 @@ function VisitSummary() {
                 label="Payment"
                 value={
                   booking.payment.status === "paid"
-                    ? `₹${booking.payment.amount} captured`
+                    ? `${formatMoney(booking.payment.amount, booking.payment.currency)} captured`
                     : booking.payment.status === "refunded"
-                      ? `₹${booking.payment.amount} refunded`
+                      ? `${formatMoney(booking.payment.amount, booking.payment.currency)} refunded`
                       : "Not paid"
                 }
               />

@@ -1,4 +1,5 @@
 import { DOCTORS } from "./catalog";
+import { noShowResolution } from "./rules";
 import { slotsForDay, toISODate, timeLabel } from "./schedule";
 import type {
   AuditEntry,
@@ -12,7 +13,7 @@ import type {
   Slot,
 } from "./types";
 
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 export const DB_KEY = "carenow.db";
 
 /* ------------------------------------------------------------------ *
@@ -76,12 +77,12 @@ const emptyDB = (): Database => ({
 const EMPTY_DB = emptyDB();
 
 /** The patient the "Use demo account" button signs in as. */
-export const DEMO_PATIENT_EMAIL = "ananya@example.com";
+export const DEMO_PATIENT_EMAIL = "adaeze.nwosu@example.com";
 
 function patient(overrides: Partial<PatientProfile> & Pick<PatientProfile, "id" | "fullName">): PatientProfile {
   return {
     role: "patient",
-    location: "Coimbatore",
+    location: "Lagos",
     allergies: [],
     conditions: [],
     currentMedications: [],
@@ -182,23 +183,23 @@ export function seedDB(now = new Date()): Database {
   const taken = new Set<string>();
   const byId = (id: string) => db.doctors.find((d) => d.id === id)!;
 
-  const asha = byId("doc-asha-menon");
-  const ravi = byId("doc-ravi-iyer");
-  const priya = byId("doc-priya-raman");
-  const fatima = byId("doc-fatima-sheikh");
-  const meera = byId("doc-meera-krishnan");
+  const chidinma = byId("doc-chidinma-okonkwo");
+  const adebayo = byId("doc-adebayo-oyeleke");
+  const zainab = byId("doc-zainab-bello");
+  const aisha = byId("doc-aisha-suleiman");
+  const ngozi = byId("doc-ngozi-umeh");
 
   // ---- People -------------------------------------------------------
-  const ananya: PatientProfile = patient({
-    id: "pt-ananya",
-    fullName: "Ananya Sharma",
+  const adaeze: PatientProfile = patient({
+    id: "pt-adaeze",
+    fullName: "Adaeze Nwosu",
     email: DEMO_PATIENT_EMAIL,
-    phone: "+91 98430 11234",
+    phone: "+234 803 412 7788",
     dateOfBirth: "1997-04-18",
     age: 29,
     gender: "female",
     allergies: ["Penicillin"],
-    conditions: ["PCOS (diagnosed 2023)"],
+    conditions: ["PCOS (diagnosed 2023)", "Sickle cell trait (AS)"],
     currentMedications: ["Folic acid 5mg"],
     accent: "teal",
     consent: {
@@ -210,11 +211,11 @@ export function seedDB(now = new Date()): Database {
     createdAt: new Date(now.getTime() - 40 * 86_400_000).toISOString(),
   });
 
-  const anita = patient({
-    id: "pt-anita",
-    fullName: "Anita Joseph",
-    email: "anita.joseph@example.com",
-    phone: "+91 90031 55210",
+  const bisi = patient({
+    id: "pt-bisi",
+    fullName: "Bisi Oladipo",
+    email: "bisi.oladipo@example.com",
+    phone: "+234 806 220 4190",
     age: 34,
     gender: "female",
     allergies: ["Sulfa drugs"],
@@ -223,11 +224,11 @@ export function seedDB(now = new Date()): Database {
     createdAt: new Date(now.getTime() - 21 * 86_400_000).toISOString(),
   });
 
-  const rahul = patient({
-    id: "pt-rahul",
-    fullName: "Rahul Verma",
-    email: "rahul.verma@example.com",
-    phone: "+91 99400 77123",
+  const musa = patient({
+    id: "pt-musa",
+    fullName: "Musa Abdulkareem",
+    email: "musa.abdulkareem@example.com",
+    phone: "+234 809 771 3302",
     age: 41,
     gender: "male",
     allergies: [],
@@ -237,27 +238,28 @@ export function seedDB(now = new Date()): Database {
     createdAt: new Date(now.getTime() - 60 * 86_400_000).toISOString(),
   });
 
-  const meena = patient({
-    id: "pt-meena",
-    fullName: "Meena Kumari",
-    email: "meena.k@example.com",
+  const temilade = patient({
+    id: "pt-temilade",
+    fullName: "Temilade Ojo",
+    email: "ojo.family@example.com",
+    phone: "+234 705 118 6642",
     age: 8,
     gender: "female",
     allergies: [],
-    conditions: [],
+    conditions: ["Sickle cell trait (AS)"],
     createdAt: new Date(now.getTime() - 3 * 86_400_000).toISOString(),
   });
 
-  db.patients = [ananya, anita, rahul, meena];
+  db.patients = [adaeze, bisi, musa, temilade];
 
   // ---- Upcoming, joinable consult for the demo patient ---------------
   // Two days out, paid, confirmed — this is the booking the demo lands on.
-  const soon = takeSlot(fatima, 2, taken, now);
+  const soon = takeSlot(aisha, 2, taken, now);
   if (soon) {
     const b = makeBooking({
-      doctor: fatima,
+      doctor: aisha,
       slot: soon,
-      patientId: ananya.id,
+      patientId: adaeze.id,
       status: "confirmed",
       paid: true,
       now,
@@ -273,17 +275,17 @@ export function seedDB(now = new Date()): Database {
       },
     });
     db.bookings.push(b);
-    db.audit.push(audit(now, "patient", ananya.id, "booking_created", "booking", b.id));
+    db.audit.push(audit(now, "patient", adaeze.id, "booking_created", "booking", b.id));
     db.audit.push(audit(now, "system", "system", "payment_captured", "booking", b.id));
   }
 
   // ---- The clinician's queue (other people's bookings) ---------------
-  const queueSlot = takeSlot(asha, 0, taken, now);
+  const queueSlot = takeSlot(chidinma, 0, taken, now);
   if (queueSlot) {
     const b = makeBooking({
-      doctor: asha,
+      doctor: chidinma,
       slot: queueSlot,
-      patientId: anita.id,
+      patientId: bisi.id,
       status: "confirmed",
       paid: true,
       now,
@@ -301,12 +303,12 @@ export function seedDB(now = new Date()): Database {
     db.bookings.push(b);
   }
 
-  const queueSlot2 = takeSlot(ravi, 1, taken, now);
+  const queueSlot2 = takeSlot(adebayo, 1, taken, now);
   if (queueSlot2) {
     const b = makeBooking({
-      doctor: ravi,
+      doctor: adebayo,
       slot: queueSlot2,
-      patientId: rahul.id,
+      patientId: musa.id,
       status: "confirmed",
       paid: true,
       now,
@@ -321,19 +323,21 @@ export function seedDB(now = new Date()): Database {
     db.bookings.push(b);
   }
 
-  const unpaidSlot = takeSlot(ravi, 2, taken, now);
+  const unpaidSlot = takeSlot(adebayo, 2, taken, now);
   if (unpaidSlot) {
     db.bookings.push(
       makeBooking({
-        doctor: ravi,
+        doctor: adebayo,
         slot: unpaidSlot,
-        patientId: meena.id,
+        patientId: temilade.id,
         status: "pending_payment",
         paid: false,
         now,
         intake: {
           reason: "Fever for two days",
-          notes: "Temperature 101.4°F at home. Drinking fluids normally, playful between fevers.",
+          notes:
+            "Temperature 38.6°C at home. Drinking fluids normally and playful between fevers. " +
+            "No malaria test yet — last one was over a month ago.",
           duration: "2 days",
           severity: 3,
           attachProfileHistory: false,
@@ -343,12 +347,12 @@ export function seedDB(now = new Date()): Database {
   }
 
   // ---- Completed history, so Records has something real --------------
-  const pastRavi = takeSlot(ravi, -12, taken, now);
-  if (pastRavi) {
+  const pastAdebayo = takeSlot(adebayo, -12, taken, now);
+  if (pastAdebayo) {
     const b = makeBooking({
-      doctor: ravi,
-      slot: pastRavi,
-      patientId: ananya.id,
+      doctor: adebayo,
+      slot: pastAdebayo,
+      patientId: adaeze.id,
       status: "completed",
       paid: true,
       now,
@@ -369,15 +373,15 @@ export function seedDB(now = new Date()): Database {
         diagnosis: "Acute pharyngitis, likely viral",
         medications: meds([
           {
-            name: "Paracetamol 650mg",
-            dosage: "1 tablet",
+            name: "Paracetamol 500mg",
+            dosage: "2 tablets",
             frequency: "Three times a day after food",
             duration: "3 days",
-            notes: "Stop once fever has been gone for 24 hours.",
+            notes: "Stop once the fever has been gone for 24 hours.",
           },
           {
-            name: "Benzydamine 0.15% gargle",
-            dosage: "10 ml diluted in 30 ml water",
+            name: "Chlorhexidine 0.2% gargle",
+            dosage: "10 ml diluted in warm water",
             frequency: "Twice a day",
             duration: "5 days",
           },
@@ -391,20 +395,20 @@ export function seedDB(now = new Date()): Database {
     db.ratings.push({
       id: uid("rt"),
       bookingId: b.id,
-      patientId: ananya.id,
-      doctorId: ravi.id,
+      patientId: adaeze.id,
+      doctorId: adebayo.id,
       stars: 5,
       comment: "Explained everything clearly and the prescription arrived before I got up.",
       createdAt: new Date(new Date(b.startsAt).getTime() + 2 * 86_400_000).toISOString(),
     });
   }
 
-  const pastAsha = takeSlot(asha, -34, taken, now);
-  if (pastAsha) {
+  const pastChidinma = takeSlot(chidinma, -34, taken, now);
+  if (pastChidinma) {
     const b = makeBooking({
-      doctor: asha,
-      slot: pastAsha,
-      patientId: ananya.id,
+      doctor: chidinma,
+      slot: pastChidinma,
+      patientId: adaeze.id,
       status: "completed",
       paid: true,
       now,
@@ -448,8 +452,8 @@ export function seedDB(now = new Date()): Database {
     db.ratings.push({
       id: uid("rt"),
       bookingId: b.id,
-      patientId: ananya.id,
-      doctorId: asha.id,
+      patientId: adaeze.id,
+      doctorId: chidinma.id,
       stars: 5,
       comment: "Followed up on chat without charging again.",
       createdAt: new Date(new Date(b.startsAt).getTime() + 86_400_000).toISOString(),
@@ -457,12 +461,12 @@ export function seedDB(now = new Date()): Database {
   }
 
   // A second opinion the demo patient can rebook from her visit history.
-  const pastMeera = takeSlot(meera, -6, taken, now);
-  if (pastMeera) {
+  const pastNgozi = takeSlot(ngozi, -6, taken, now);
+  if (pastNgozi) {
     const b = makeBooking({
-      doctor: meera,
-      slot: pastMeera,
-      patientId: rahul.id,
+      doctor: ngozi,
+      slot: pastNgozi,
+      patientId: musa.id,
       status: "completed",
       paid: true,
       now,
@@ -498,27 +502,54 @@ export function seedDB(now = new Date()): Database {
     );
   }
 
-  // A no-show that was refunded — exercises the PRD's failure handling path.
-  const noShowSlot = takeSlot(priya, -3, taken, now);
+  // A follow-up the demo patient herself missed, so the PRD's no-show and refund
+  // path is visible from the patient side, not only to the clinician.
+  const missedFollowUp = takeSlot(chidinma, -19, taken, now);
+  if (missedFollowUp) {
+    const b = makeBooking({
+      doctor: chidinma,
+      slot: missedFollowUp,
+      patientId: adaeze.id,
+      status: "no_show",
+      paid: true,
+      now,
+      reminderSent: true,
+      intake: {
+        reason: "Two-week review after the acne treatment",
+        notes: "Skin has settled a lot. One new spot on the chin last week.",
+        duration: "2 weeks",
+        severity: 1,
+        attachProfileHistory: true,
+      },
+    });
+    b.resolution = noShowResolution(b.payment.amount, b.payment.currency);
+    b.payment.status = "refunded";
+    b.payment.refundedAt = new Date(new Date(b.startsAt).getTime() + 20 * 60_000).toISOString();
+    db.bookings.push(b);
+    db.audit.push(
+      audit(now, "system", "system", "refund_issued", "booking", b.id, "Patient did not join"),
+    );
+  }
+
+  const noShowSlot = takeSlot(zainab, -3, taken, now);
   if (noShowSlot) {
     const b = makeBooking({
-      doctor: priya,
+      doctor: zainab,
       slot: noShowSlot,
-      patientId: meena.id,
+      patientId: temilade.id,
       status: "no_show",
       paid: true,
       now,
       reminderSent: true,
       intake: {
         reason: "Rash behind both knees",
-        notes: "Itchy, worse after play.",
+        notes: "Itchy, worse after play and at night. No new soap or food.",
         duration: "1 week",
         severity: 2,
         attachProfileHistory: false,
       },
     });
-    b.resolution =
-      "Nobody joined within 10 minutes, so the doctor closed the room and we refunded the full fee to your original payment method.";
+    b.resolution = noShowResolution(b.payment.amount, b.payment.currency);
     b.payment.status = "refunded";
     b.payment.refundedAt = new Date(new Date(b.startsAt).getTime() + 20 * 60_000).toISOString();
     db.bookings.push(b);

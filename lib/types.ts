@@ -38,7 +38,9 @@ export interface Doctor {
   };
   fullName: string;
   specialty: SpecialtyId;
-  /** e.g. "MBBS, MD (Dermatology)" */
+  /** Where the clinician is registered and practises from. */
+  city: string;
+  /** e.g. "MBBS, FMCP (Dermatology)" */
   qualifications: string;
   yearsExperience: number;
   bio: string;
@@ -130,7 +132,8 @@ export interface Booking {
 
 export type ReminderChannel = "email" | "sms" | "push";
 
-export type Currency = "INR" | "NGN" | "USD";
+/** NGN is the currency CareNow prices in; the union keeps room for other markets. */
+export type Currency = "NGN" | "INR" | "USD";
 
 export type PaymentProviderId = "stripe" | "paystack";
 

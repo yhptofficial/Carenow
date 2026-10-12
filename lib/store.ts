@@ -326,7 +326,7 @@ export function createStoreApi(db: Database, ready: boolean) {
           fullName: name,
           email,
           phone,
-          location: "Coimbatore",
+          location: "Lagos",
           allergies: [],
           conditions: [],
           currentMedications: [],
@@ -863,7 +863,7 @@ function nameFromIdentity(email?: string, phone?: string): string {
     const local = email.split("@")[0].replace(/[._-]+/g, " ");
     return local.replace(/\b\w/g, (c) => c.toUpperCase());
   }
-  return phone ? "New patient" : "New patient";
+  return "New patient";
 }
 
 function seedFallback(): PatientProfile {

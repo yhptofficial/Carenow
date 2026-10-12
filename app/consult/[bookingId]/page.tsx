@@ -17,6 +17,7 @@ import {
   VideoOffIcon,
 } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { minutesUntil, timeLabel } from "@/lib/schedule";
 
 /**
@@ -271,7 +272,7 @@ export default function ConsultPage() {
                   This consultation is unpaid. Pay to unlock the room — your slot is still held.
                 </Notice>
                 <Button full onClick={() => router.push(`/checkout/${booking.id}`)}>
-                  Pay ₹{booking.payment.amount}
+                  Pay {formatMoney(booking.payment.amount, booking.payment.currency)}
                 </Button>
               </>
             ) : !canJoin ? (

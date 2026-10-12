@@ -59,7 +59,7 @@ const config: Config = {
       fontSize: {
         // [size, { lineHeight }] — from the typography section of the style guide.
         screen: ["24px", { lineHeight: "30px", letterSpacing: "-0.02em" }], // Screen title
-        context: ["12px", { lineHeight: "16px" }], // Context label ("Coimbatore")
+        context: ["12px", { lineHeight: "16px" }], // Context label ("Lagos · Good morning")
         card: ["15px", { lineHeight: "20px" }], // Card title (doctor name)
         sub: ["12px", { lineHeight: "16px" }], // Card subtitle
         meta: ["12px", { lineHeight: "16px" }], // Meta text (next slot, rating)

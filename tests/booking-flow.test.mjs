@@ -86,9 +86,9 @@ test("search matches symptoms, not only names", () => {
   const bySymptom = api().listDoctors({ query: "tooth" });
   assert.ok(bySymptom.some((v) => v.doctor.specialty === "dental"), "expected a dentist for 'tooth'");
 
-  const byName = api().listDoctors({ query: "asha" });
+  const byName = api().listDoctors({ query: "okonkwo" });
   assert.equal(byName.length, 1);
-  assert.equal(byName[0].doctor.fullName, "Dr. Asha Menon");
+  assert.equal(byName[0].doctor.fullName, "Dr. Chidinma Okonkwo");
 
   const bySpecialty = api().listDoctors({ specialty: "child" });
   assert.ok(bySpecialty.every((v) => v.doctor.specialty === "child"));

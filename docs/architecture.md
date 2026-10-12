@@ -63,7 +63,7 @@ than trusting the caller — which is what makes the "slot just taken" case
 testable without a server. Real bookings are then overlaid on top of the rota as
 `booked`, so a slot a patient holds disappears for everyone else immediately.
 
-Slot ids carry their own date (`doc-asha-menon_2026-03-12_1830`), so the
+Slot ids carry their own date (`doc-chidinma-okonkwo_2026-03-12_1830`), so the
 creator can always re-derive the slot it refers to.
 
 ## The rules layer

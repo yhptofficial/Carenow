@@ -10,6 +10,8 @@
 -- The DoD requires: "Patient data is protected with Row Level Security, with no
 -- cross-user data access." That is enforced here rather than in the client.
 --
+-- Prices are held in naira (₦); the currency column keeps room for other markets.
+--
 -- Apply with:  supabase db push   (or paste into the SQL editor)
 -- ============================================================================
 
@@ -38,7 +40,7 @@ create table profiles (
   full_name     text not null,
   email         citext,
   phone         text,
-  location      text default 'Coimbatore',
+  location      text default 'Lagos',
   date_of_birth date,
   gender        text check (gender in ('female','male','other','undisclosed')),
   created_at    timestamptz not null default now(),
@@ -59,12 +61,14 @@ create table patient_health (
 create table doctors (
   id                 uuid primary key references profiles(id) on delete cascade,
   specialty          text not null,
+  -- Where the clinician is registered and practises from.
+  city               text not null default 'Lagos',
   qualifications     text not null,
   years_experience   int  not null check (years_experience between 0 and 70),
   bio                text not null default '',
   languages          text[] not null default '{}',
   consultation_fee   numeric(10,2) not null check (consultation_fee >= 0),
-  currency           text not null default 'INR',
+  currency           text not null default 'NGN',
   -- Manual verification gate. Only rows with verified_at set are discoverable.
   licence_number     text,
   verified_at        timestamptz,
@@ -134,7 +138,7 @@ create table bookings (
   payment_provider  text,
   payment_reference text,
   amount            numeric(10,2) not null,
-  currency          text not null default 'INR',
+  currency          text not null default 'NGN',
   paid_at           timestamptz,
   refunded_at       timestamptz,
   failure_reason    text,
@@ -439,6 +443,7 @@ with (security_invoker = off) as
     d.id,
     p.full_name,
     d.specialty,
+    d.city,
     d.qualifications,
     d.years_experience,
     d.bio,

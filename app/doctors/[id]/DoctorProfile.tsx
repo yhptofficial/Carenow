@@ -18,6 +18,7 @@ import {
 } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
 import { timeLabel } from "@/lib/schedule";
+import { formatMoney } from "@/lib/currency";
 
 export function DoctorProfile({ doctorId }: { doctorId: string }) {
   const store = useStore();
@@ -76,7 +77,7 @@ export function DoctorProfile({ doctorId }: { doctorId: string }) {
         backHref="/find"
         trailing={
           <span className="rounded-pill bg-primary-tint px-2.5 py-1 text-[11px] font-semibold text-primary-dark">
-            {doctor.consultationFee} {doctor.currency === "INR" ? "₹" : doctor.currency}
+            {formatMoney(doctor.consultationFee, doctor.currency)}
           </span>
         }
       />
@@ -112,7 +113,7 @@ export function DoctorProfile({ doctorId }: { doctorId: string }) {
               <div>
                 <dt className="text-[11px] text-ink-muted">Consultation fee</dt>
                 <dd className="mt-0.5 text-[13px] font-medium text-ink">
-                  ₹{doctor.consultationFee} · {doctor.currency}
+                  {formatMoney(doctor.consultationFee, doctor.currency)} · {doctor.currency}
                 </dd>
               </div>
             </dl>
@@ -218,7 +219,7 @@ export function DoctorProfile({ doctorId }: { doctorId: string }) {
 
           <p className="flex items-center justify-center gap-1.5 pb-2 text-[11px] text-ink-muted">
             <MapPinIcon size={13} />
-            Practises in {doctor.languages[0] === "Tamil" ? "Coimbatore" : "India"} · online only
+            Practises in {doctor.city} · online only
           </p>
         </div>
       </div>
@@ -245,7 +246,7 @@ export function DoctorProfile({ doctorId }: { doctorId: string }) {
             )}
           </div>
           <span className="shrink-0 text-[13px] font-semibold text-ink">
-            ₹{doctor.consultationFee}
+            {formatMoney(doctor.consultationFee, doctor.currency)}
           </span>
         </div>
         <Button

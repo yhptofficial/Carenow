@@ -22,6 +22,7 @@ import {
   VideoIcon,
 } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { timeLabel } from "@/lib/schedule";
 
 export default function BookingsPage() {
@@ -359,7 +360,7 @@ function UpcomingCard({
       {unpaid ? (
         <div className="mt-3 space-y-2">
           <Button full size="md" onClick={onPay}>
-            Pay ₹{booking.payment.amount} to confirm
+            Pay {formatMoney(booking.payment.amount, booking.payment.currency)} to confirm
           </Button>
           {booking.payment.status === "failed" ? (
             <p className="text-[11px] leading-5 text-danger">
@@ -536,12 +537,12 @@ function BookingDetail({
           label="Payment"
           value={
             booking.payment.status === "paid"
-              ? `₹${booking.payment.amount} paid`
+              ? `${formatMoney(booking.payment.amount, booking.payment.currency)} paid`
               : booking.payment.status === "refunded"
-                ? `₹${booking.payment.amount} refunded`
+                ? `${formatMoney(booking.payment.amount, booking.payment.currency)} refunded`
                 : booking.payment.status === "failed"
                   ? "Declined — retry"
-                  : `₹${booking.payment.amount} unpaid`
+                  : `${formatMoney(booking.payment.amount, booking.payment.currency)} unpaid`
           }
           tone={
             booking.payment.status === "paid"
@@ -584,7 +585,7 @@ function BookingDetail({
         <div className="space-y-2.5">
           {booking.payment.status !== "paid" ? (
             <Button full onClick={onPay} icon={<CardIcon size={18} />}>
-              Pay ₹{booking.payment.amount}
+              Pay {formatMoney(booking.payment.amount, booking.payment.currency)}
             </Button>
           ) : (
             <Button full onClick={onJoin} disabled={!booking.joinable} icon={<VideoIcon size={18} />}>
@@ -708,8 +709,11 @@ function CancelSheet({
           <Notice tone={refundable ? "ok" : booking.payment.status === "paid" ? "warn" : "info"} icon={<AlertIcon size={18} />}>
             {refundable ? (
               <>
-                You&apos;re more than 2 hours ahead, so <strong>₹{booking.payment.amount} will be
-                refunded</strong> to your original payment method within 5–7 working days.
+                You&apos;re more than 2 hours ahead, so{" "}
+                <strong>
+                  {formatMoney(booking.payment.amount, booking.payment.currency)} will be refunded
+                </strong>{" "}
+                to your original payment method within 5–7 working days.
               </>
             ) : booking.payment.status === "paid" ? (
               <>

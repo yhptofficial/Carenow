@@ -211,7 +211,8 @@ function Prescription() {
               </div>
               <p className="mt-4 text-[10px] leading-4 text-ink-muted">
                 This is a digitally generated prescription valid without a physical signature. Verify
-                the prescriber&apos;s registration number with your state medical council. Issued
+                the prescriber&apos;s registration number with the Medical and Dental Council of
+                Nigeria (MDCN). Issued
                 following a teleconsultation; not valid for controlled substances in some
                 jurisdictions.
               </p>

@@ -4,7 +4,10 @@
 without leaving home.**
 
 A mobile-first telemedicine PWA: patient and clinician sides in one Next.js app,
-built to the CareNow style guide and the v1 PRD.
+built to the CareNow style guide and the v1 PRD, and set up for the Nigerian
+market — doctors registered with the Medical and Dental Council of Nigeria
+(MDCN), fees quoted in naira, and legal copy written against the Nigeria Data
+Protection Act 2023.
 
 ```bash
 npm install
@@ -14,7 +17,7 @@ npm run build        # production build
 ```
 
 **Want to look around immediately?** Open `/onboarding` and tap
-*Use demo account* — you land as Ananya Sharma, a patient with a confirmed
+*Use demo account* — you land as Adaeze Nwosu, a patient with a confirmed
 consultation, past visits, prescriptions and a no-show refund to inspect. The
 clinician side is at `/doctor`.
 
@@ -102,6 +105,22 @@ type scale as a named token, and
 - Icons are a hand-built 1.5px outline set; the star in the rating badge is the
   one filled glyph.
 
+## Market settings
+
+| Setting | Value | Where |
+| --- | --- | --- |
+| Currency | NGN (₦), formatted by `formatMoney()` | `lib/currency.ts` |
+| Doctor registration | MDCN numbers, e.g. `MDCN/R/41208` | `lib/catalog.ts` |
+| Clinical qualifications | Nigerian/West African fellowships — FMCP, FWACP, FMCOG, FMCDS, DFM | `lib/catalog.ts` |
+| Language coverage | English, Yoruba, Igbo, Hausa, Nigerian Pidgin, Edo, Fulfulde, Kanuri, Nupe | `lib/catalog.ts` |
+| Doctor cities | Lagos, Abuja, Ibadan, Kano, Enugu, Kaduna, Benin City, Port Harcourt | `lib/catalog.ts` |
+| Patient location label | Lagos | `lib/db.ts`, `app/(app)/*` |
+| Regulatory framing | Nigeria Data Protection Act 2023, NDPC | `app/legal/*` |
+
+Changing market is deliberately cheap: fees carry their own currency on the
+doctor and booking records, so a screen never assumes a symbol, and the
+catalogue is one file.
+
 ## Technology
 
 | Layer | Choice |
@@ -138,5 +157,6 @@ double payment, cross-doctor prescribing and cross-patient record access).
 CareNow is not for emergencies, and the app says so on every entry point. It
 does not handle ambulance dispatch, in-person procedures, controlled substances
 or pharmacy ordering. The privacy policy and terms are shipped as reviewed
-templates and must be checked against the health-data rules of each jurisdiction
-before launch, with a named grievance officer.
+templates, written against the Nigeria Data Protection Act 2023, and must still be
+checked by a Nigerian lawyer before launch — including naming a Data Protection
+Officer and registering with the Nigeria Data Protection Commission.

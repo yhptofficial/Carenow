@@ -10,6 +10,7 @@ import { SlotPicker } from "@/components/SlotPicker";
 import { Avatar, Button, Card, Checkbox, Notice, SectionTitle } from "@/components/ui";
 import { AlertIcon, CheckIcon, ClockIcon, LockIcon, ShieldIcon } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { timeLabel } from "@/lib/schedule";
 import type { Intake } from "@/lib/types";
 
@@ -124,7 +125,7 @@ function BookScreen() {
               {entry.specialtyLabel} · {doctor.yearsExperience} yrs
             </p>
           </div>
-          <p className="shrink-0 text-[13px] font-semibold text-ink">₹{doctor.consultationFee}</p>
+          <p className="shrink-0 text-[13px] font-semibold text-ink">{formatMoney(doctor.consultationFee, doctor.currency)}</p>
         </Card>
 
         {step === 1 ? (
@@ -285,7 +286,7 @@ function BookScreen() {
         ) : (
           <div className="space-y-2">
             <Button full loading={busy} disabled={!canSubmit} onClick={submit}>
-              Review and pay ₹{doctor.consultationFee}
+              Review and pay {formatMoney(doctor.consultationFee, doctor.currency)}
             </Button>
             <p className="flex items-center justify-center gap-1.5 text-[11px] text-ink-muted">
               <ShieldIcon size={13} />

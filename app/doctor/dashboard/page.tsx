@@ -8,6 +8,7 @@ import { DetailHeader } from "@/components/AppHeader";
 import { Brief } from "@/components/ClinicalBrief";
 import { AlertIcon, CalendarIcon, NoteIcon, PillIcon, VideoIcon } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { minutesUntil, timeLabel } from "@/lib/schedule";
 
 /**
@@ -84,7 +85,7 @@ export default function DoctorDashboardPage() {
             </p>
           </div>
           <span className="shrink-0 rounded-pill bg-primary-tint px-2.5 py-1 text-[11px] font-semibold text-primary-dark">
-            {earnings > 0 ? `₹${earnings} this month` : "Verified"}
+            {earnings > 0 ? `${formatMoney(earnings)} this month` : "Verified"}
           </span>
         </div>
 

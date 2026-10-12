@@ -27,10 +27,11 @@ export default function PrivacyPage() {
 
       <Clause n={2} heading="Why we're allowed to hold it">
         <p>
-          Health information is special-category data. We process it on the basis of your explicit
-          consent, which you give separately from accepting these terms, and on the basis of providing
-          medical care. When you book a doctor, you consent to that doctor reading your intake notes
-          and health history for the purpose of treating you.
+          Under the Nigeria Data Protection Act 2023, health information is sensitive personal data.
+          We process it on the basis of your explicit consent, which you give separately from
+          accepting these terms, and on the basis of providing medical care. When you book a doctor,
+          you consent to that doctor reading your intake notes and health history for the purpose of
+          treating you.
         </p>
         <p>
           You can withdraw consent at any time from Profile → Consent. Doing so means we can no longer
@@ -101,8 +102,9 @@ export default function PrivacyPage() {
       <Clause n={8} heading="Contact">
         <p>
           Data protection queries: privacy@carenow.health. Clinical complaints:
-          clinic@carenow.health. Postal address and the name of our grievance officer will be
-          published here before launch.
+          clinic@carenow.health. Our postal address, the name of our Data Protection Officer and our
+          registration with the Nigeria Data Protection Commission will be published here before
+          launch.
         </p>
       </Clause>
     </LegalLayout>

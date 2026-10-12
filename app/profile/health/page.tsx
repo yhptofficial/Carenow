@@ -57,7 +57,7 @@ function HealthScreen() {
       allergies,
       conditions,
       currentMedications: medications,
-      location: location.trim() || "Coimbatore",
+      location: location.trim() || "Lagos",
     });
     setSaved(true);
     toast("Health information updated.", "ok");
@@ -121,7 +121,7 @@ function HealthScreen() {
                 className="field"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Coimbatore"
+                placeholder="Lagos"
               />
               <p className="mt-1.5 text-[11px] text-ink-muted">
                 Used for the timezone on your appointment times and to suggest local specialists.

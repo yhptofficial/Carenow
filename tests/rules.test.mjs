@@ -10,6 +10,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { formatMoney, DEFAULT_CURRENCY, CURRENCY_SYMBOL } from "../lib/currency.ts";
 import {
   FREE_CANCELLATION_HOURS,
   NO_SHOW_GRACE_MINS,
@@ -90,15 +91,15 @@ test("a booking is confirmed only once payment is captured", () => {
  * ------------------------------------------------------------------ */
 
 test(`cancelling more than ${FREE_CANCELLATION_HOURS}h ahead is refundable`, () => {
-  const booking = { startsAt: at(180), payment: { status: "paid", amount: 450 } };
+  const booking = { startsAt: at(180), payment: { status: "paid", amount: 10000, currency: "NGN" } };
   assert.equal(isRefundableOnCancel(booking, NOW), true);
   const outcome = cancellationOutcome(booking, NOW);
   assert.equal(outcome.refunded, true);
-  assert.match(outcome.message, /Full refund of ₹450/);
+  assert.match(outcome.message, /Full refund of ₦10,000/);
 });
 
 test("cancelling inside the window keeps the fee but offers a reschedule", () => {
-  const booking = { startsAt: at(60), payment: { status: "paid", amount: 450 } };
+  const booking = { startsAt: at(60), payment: { status: "paid", amount: 10000, currency: "NGN" } };
   assert.equal(isRefundableOnCancel(booking, NOW), false);
   const outcome = cancellationOutcome(booking, NOW);
   assert.equal(outcome.refunded, false);
@@ -107,7 +108,7 @@ test("cancelling inside the window keeps the fee but offers a reschedule", () =>
 });
 
 test("an unpaid booking cancels without any refund language", () => {
-  const booking = { startsAt: at(180), payment: { status: "unpaid", amount: 300 } };
+  const booking = { startsAt: at(180), payment: { status: "unpaid", amount: 5000, currency: "NGN" } };
   const outcome = cancellationOutcome(booking, NOW);
   assert.equal(outcome.refunded, false);
   assert.match(outcome.message, /No payment was taken/);
@@ -260,10 +261,10 @@ test("an unpaid or cancelled booking grants no history access", () => {
  * ------------------------------------------------------------------ */
 
 test("sign-up requires a plausible email or phone", () => {
-  assert.equal(isValidEmail("ananya@example.com"), true);
-  assert.equal(isValidEmail("ananya@example"), false);
-  assert.equal(isValidEmail("ananya"), false);
-  assert.equal(isValidPhone("+91 98430 11234"), true);
+  assert.equal(isValidEmail("adaeze.nwosu@example.com"), true);
+  assert.equal(isValidEmail("adaeze@example"), false);
+  assert.equal(isValidEmail("adaeze"), false);
+  assert.equal(isValidPhone("+234 803 412 7788"), true);
   assert.equal(isValidPhone("98430"), false);
 });
 

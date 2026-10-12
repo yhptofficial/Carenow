@@ -8,7 +8,8 @@
  * actually decides a refund.
  */
 
-import type { BookingStatus, Medication, PaymentStatus } from "./types";
+import { DEFAULT_CURRENCY, formatMoney } from "./currency";
+import type { BookingStatus, Currency, Medication, PaymentStatus } from "./types";
 
 /* ------------------------------------------------------------------ *
  * Policy constants
@@ -119,7 +120,10 @@ export function isRefundableOnCancel(
 }
 
 export function cancellationOutcome(
-  booking: { startsAt: string; payment: { status: PaymentStatus; amount: number } },
+  booking: {
+    startsAt: string;
+    payment: { status: PaymentStatus; amount: number; currency?: Currency };
+  },
   now: Date = new Date(),
 ): { refunded: boolean; message: string } {
   if (booking.payment.status !== "paid") {
@@ -131,7 +135,7 @@ export function cancellationOutcome(
   if (isRefundableOnCancel(booking, now)) {
     return {
       refunded: true,
-      message: `Full refund of ₹${booking.payment.amount} issued to your original payment method (5–7 working days).`,
+      message: `Full refund of ${formatMoney(booking.payment.amount, booking.payment.currency)} issued to your original payment method (5–7 working days).`,
     };
   }
   return {
@@ -154,8 +158,8 @@ export function isNoShowResolvable(
   return waitedMins >= NO_SHOW_GRACE_MINS;
 }
 
-export function noShowResolution(amount: number): string {
-  return `Nobody joined within ${NO_SHOW_GRACE_MINS} minutes, so the full fee of ₹${amount} has been refunded to your original payment method.`;
+export function noShowResolution(amount: number, currency: Currency = DEFAULT_CURRENCY): string {
+  return `Nobody joined within ${NO_SHOW_GRACE_MINS} minutes, so the full fee of ${formatMoney(amount, currency)} has been refunded to your original payment method.`;
 }
 
 /* ------------------------------------------------------------------ *

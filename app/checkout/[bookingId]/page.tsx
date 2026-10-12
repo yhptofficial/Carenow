@@ -16,6 +16,7 @@ import {
   ShieldIcon,
 } from "@/components/Icons";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { timeLabel } from "@/lib/schedule";
 
 /**
@@ -283,15 +284,15 @@ function CheckoutScreen() {
             <dl className="space-y-2 text-[13px]">
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Consultation fee</dt>
-                <dd className="text-ink">₹{fee}</dd>
+                <dd className="text-ink">{formatMoney(fee, booking.payment.currency)}</dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-ink-muted">Platform fee</dt>
-                <dd className="text-ink">₹{platformFee}</dd>
+                <dd className="text-ink">{formatMoney(platformFee, booking.payment.currency)}</dd>
               </div>
               <div className="flex justify-between border-t border-line pt-2.5 text-[15px] font-semibold">
                 <dt className="text-ink">Total payable</dt>
-                <dd className="text-ink">₹{total}</dd>
+                <dd className="text-ink">{formatMoney(total, booking.payment.currency)}</dd>
               </div>
             </dl>
             <p className="mt-3 flex items-start gap-2 text-[11px] leading-5 text-ink-muted">
@@ -316,7 +317,7 @@ function CheckoutScreen() {
         style={{ paddingBottom: "calc(12px + var(--safe-b))" }}
       >
         <Button full loading={busy} onClick={pay}>
-          Pay ₹{total} and confirm
+          Pay {formatMoney(total, booking.payment.currency)} and confirm
         </Button>
       </div>
 
@@ -332,8 +333,9 @@ function CheckoutScreen() {
             </p>
             <h2 className="mt-1 text-[17px] font-bold text-ink">Approve this payment</h2>
             <p className="mt-2 text-[13px] leading-6 text-ink-muted">
-              A ₹{total} payment to <span className="font-medium text-ink">CareNow Health</span> is
-              waiting for your approval. In the live app this screen belongs to your bank — we never
+              A {formatMoney(total, booking.payment.currency)} payment to{" "}
+              <span className="font-medium text-ink">CareNow Health</span> is waiting for your
+              approval. In the live app this screen belongs to your bank — we never
               see your one-time code.
             </p>
             <div className="mt-4 rounded-2xl bg-canvas px-4 py-3 text-[13px]">
@@ -345,7 +347,7 @@ function CheckoutScreen() {
               </div>
               <div className="mt-2 flex justify-between">
                 <span className="text-ink-muted">Amount</span>
-                <span className="font-medium text-ink">₹{total}</span>
+                <span className="font-medium text-ink">{formatMoney(total, booking.payment.currency)}</span>
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 gap-3">

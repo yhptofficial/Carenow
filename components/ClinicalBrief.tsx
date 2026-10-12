@@ -4,6 +4,7 @@ import { Avatar, Notice } from "@/components/ui";
 import { AlertIcon, CheckCircleIcon, ClockIcon, ShieldIcon } from "@/components/Icons";
 import { useStore, type BookingView } from "@/lib/store";
 import { initialsOf } from "@/lib/db";
+import { formatMoney } from "@/lib/currency";
 import { timeLabel } from "@/lib/schedule";
 
 /**
@@ -93,7 +94,7 @@ export function Brief({ booking }: { booking: BookingView }) {
           <div className="flex justify-between">
             <dt className="text-ink-muted">Fee</dt>
             <dd className="text-ink">
-              ₹{booking.payment.amount}{" "}
+              {formatMoney(booking.payment.amount, booking.payment.currency)}{" "}
               <span className={booking.payment.status === "paid" ? "text-primary-dark" : "text-warning"}>
                 ({booking.payment.status})
               </span>
