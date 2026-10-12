@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Environment — never commit credentials
+.env
+.env*.local
+.env.production
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Tests / coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS + editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Supabase local stack (branch state, not source)
+supabase/.branches/
+supabase/.temp/
+supabase/.env
