@@ -1,0 +1,142 @@
+@import "@fontsource-variable/plus-jakarta-sans";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Height of the floating bottom nav + its inset. Used to pad scroll areas. */
+    --nav-h: 64px;
+    --nav-inset: 12px;
+    --safe-b: env(safe-area-inset-bottom, 0px);
+    --safe-t: env(safe-area-inset-top, 0px);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    /* The PWA is a single mobile column; on desktop we centre it on a soft frame. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Inputs inherit the app font instead of the UA default. */
+  input,
+  textarea,
+  select,
+  button {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* Visible focus for keyboard users only — pointer taps stay visually quiet. */
+  :focus-visible {
+    outline: 2px solid theme("colors.primary.DEFAULT");
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  ::selection {
+    background: theme("colors.primary.tint");
+    color: theme("colors.primary.dark");
+  }
+
+  /* Slim, unobtrusive scrollbar for the desktop frame. */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: theme("colors.line");
+    border-radius: 999px;
+  }
+}
+
+@layer components {
+  /* The phone-width column every patient screen lives inside. */
+  .app-shell {
+    @apply mx-auto w-full max-w-[440px] min-h-[100dvh] bg-canvas relative;
+  }
+
+  /* Scroll container that clears the floating bottom nav. */
+  .app-scroll {
+    @apply px-gutter;
+    padding-bottom: calc(var(--nav-h) + var(--nav-inset) + var(--safe-b) + 24px);
+  }
+
+  /* Horizontal chip row that bleeds to the screen edge but not beyond it. */
+  .chip-row {
+    @apply flex gap-2 overflow-x-auto;
+    margin-inline: calc(theme("spacing.gutter") * -1);
+    padding-inline: theme("spacing.gutter");
+    scrollbar-width: none;
+  }
+  .chip-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Press state shared by every tappable card / tile: a slight scale-down. */
+  .pressable {
+    @apply transition-transform duration-150 ease-press active:scale-[0.97];
+  }
+
+  /* Cards: white, 20px radius, soft shadow, no border. */
+  .card {
+    @apply bg-surface rounded-card shadow-card;
+  }
+
+  .card-tap {
+    @apply card pressable;
+  }
+
+  /* Field styling shared by every text input in the app. */
+  .field {
+    @apply w-full rounded-2xl bg-surface border border-line px-4 py-3.5
+           text-[14px] leading-5 text-ink placeholder:text-ink-muted
+           focus:outline-none focus:border-primary focus:ring-4 focus:ring-primary-tint
+           transition-colors;
+  }
+
+  .label {
+    @apply block text-chip font-medium text-ink-muted mb-2;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Respect users who have asked for less motion. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* Print view for prescriptions — the PWA's "download / print" path. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+  .app-shell {
+    max-width: none;
+    box-shadow: none;
+  }
+}
