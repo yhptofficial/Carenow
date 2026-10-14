@@ -2,7 +2,7 @@
   "name": "carenow",
   "version": "1.0.0",
   "private": true,
-  "description": "CareNow \u2014 book and attend a video consultation with a licensed doctor from your phone.",
+  "description": "CareNow — book and attend a video consultation with a licensed doctor from your phone.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.3.0",
+    "@supabase/supabase-js": "^2.117.3",
     "next": "^16.4.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

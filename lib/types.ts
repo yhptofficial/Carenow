@@ -173,6 +173,18 @@ export interface PatientProfile {
   fullName: string;
   email?: string;
   phone?: string;
+  /**
+   * One-way hash of the patient's password — never the password itself.
+   * Accounts created before passwords were introduced have none; they set
+   * one the next time they sign in. Kept off the session copy (see store).
+   */
+  passwordHash?: string;
+  /**
+   * Which auth system owns this account. `"supabase"` profiles are mirrors of
+   * a Supabase Auth user (the id is the Supabase user id) and carry no local
+   * password; `"local"` (or absent) is the prototype adapter's own account.
+   */
+  authProvider?: "local" | "supabase";
   /** Free-text location used for the header context label. */
   location: string;
   dateOfBirth?: string;
@@ -215,6 +227,7 @@ export interface AuditEntry {
   actorType: "patient" | "doctor" | "system";
   actorId: string;
   action:
+    | "sign_up"
     | "sign_in"
     | "consent_accepted"
     | "profile_updated"

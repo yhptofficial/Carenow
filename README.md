@@ -128,6 +128,7 @@ catalogue is one file.
 | Framework | Next.js 16 (App Router), React 19, TypeScript in strict mode |
 | Styling | Tailwind CSS 3.4 with the design tokens above |
 | Data | local adapter now; Supabase (Postgres + RLS) in production |
+| Auth | Supabase Auth (email + password) when `NEXT_PUBLIC_SUPABASE_*` is set (see `.env.example` + `supabase/auth_setup.sql`); local accounts + demo user otherwise |
 | Video | provider-agnostic room lifecycle; Daily.co recommended by the PRD |
 | Payments | simulated provider now; Stripe or Paystack in production |
 | Hosting | Vercel; ships as an installable PWA with an offline fallback |

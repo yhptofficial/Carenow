@@ -4,15 +4,21 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCareNow, useStore } from "@/lib/store";
 import { Button, Card, Checkbox, Notice } from "@/components/ui";
-import { AlertIcon, LockIcon, ShieldIcon, VideoIcon } from "@/components/Icons";
+import { AlertIcon, EyeIcon, EyeOffIcon, LockIcon, ShieldIcon, VideoIcon } from "@/components/Icons";
 import { CareNowLogo } from "@/components/Logo";
+import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { fetchSupabaseProfile, signInWithEmail, signUpWithEmail } from "@/lib/supabase/auth";
 
 /**
  * Auth.
  *
- * Production swaps this for Supabase Auth (email OTP / phone OTP). The shape is
- * identical: an identifier goes in, a persisted session comes out — so wiring
- * the real provider is a change inside `signIn`, not a redesign of this screen.
+ * Two explicit doors — sign in and sign up — rather than one form that
+ * quietly does whichever applies: sign-in never creates an account, and
+ * sign-up never reuses (or silently takes over) an existing one.
+ *
+ * Production swaps this for Supabase Auth (email/phone + password). The shape
+ * is identical: credentials go in, a persisted session comes out — so wiring
+ * the real provider is a change inside `signIn`/`signUp`, not of this screen.
  */
 export default function OnboardingPage() {
   return (
@@ -22,53 +28,120 @@ export default function OnboardingPage() {
   );
 }
 
+type AuthMode = "signIn" | "signUp";
+
 function OnboardingScreen() {
   const store = useStore();
   const { ready, session } = useCareNow();
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  const next = params.get("next") || "/home";
 
+  const [authMode, setAuthMode] = useState<AuthMode>(params.get("mode") === "signup" ? "signUp" : "signIn");
   const [mode, setMode] = useState<"email" | "phone">("email");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [healthConsent, setHealthConsent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Already signed in? Skip straight through.
+  const isSignUp = authMode === "signUp";
+  // With a Supabase project configured, auth is email + password there;
+  // mobile sign-in stays local-only until an SMS provider exists.
+  const supabaseMode = isSupabaseConfigured;
+
+  // Already signed in? Skip straight through to the home screen.
   useEffect(() => {
     if (ready && session) router.replace(next);
   }, [ready, session, next, router]);
 
-  const identifierReady = mode === "email" ? /^\S+@\S+\.\S+$/.test(email) : phone.replace(/\D/g, "").length >= 10;
-  const canContinue = identifierReady && acceptedTerms && healthConsent;
+  function switchAuthMode(nextMode: AuthMode) {
+    setAuthMode(nextMode);
+    setError(null);
+    setNotice(null);
+    setConfirmPassword("");
+    setShowPassword(false);
+  }
 
-  function submit() {
+  const identifierReady = mode === "email" ? /^\S+@\S+\.\S+$/.test(email) : phone.replace(/\D/g, "").length >= 10;
+  const passwordReady = password.length >= 8;
+  const confirmReady = !isSignUp || confirmPassword === password;
+  const nameReady = !isSignUp || name.trim().length >= 2;
+  const consentReady = !isSignUp || (acceptedTerms && healthConsent);
+  const canContinue = identifierReady && passwordReady && confirmReady && nameReady && consentReady;
+
+  async function submit() {
     setError(null);
     if (!identifierReady) {
       setError(mode === "email" ? "Enter a valid email address." : "Enter a 10-digit mobile number.");
       return;
     }
-    if (!acceptedTerms || !healthConsent) {
+    if (!passwordReady) {
+      setError("Use at least 8 characters for your password.");
+      return;
+    }
+    if (isSignUp && confirmPassword !== password) {
+      setError("Those passwords don't match. Enter the same password twice.");
+      return;
+    }
+    if (isSignUp && !nameReady) {
+      setError("Enter your full name — it goes on your prescriptions.");
+      return;
+    }
+    if (isSignUp && !consentReady) {
       setError("Please accept the terms and the health-data consent to continue.");
       return;
     }
     setBusy(true);
     try {
-      store.signIn({
+      if (supabaseMode) {
+        const outcome = isSignUp
+          ? await signUpWithEmail({ email, password, fullName: name.trim() })
+          : await signInWithEmail({ email, password });
+        if (outcome.status === "confirm-email") {
+          // Confirmation is on in the Supabase project: no session yet.
+          setNotice(
+            "Account created — now confirm your email. We sent a link to " +
+              `${email.trim().toLowerCase()}; open it, then come back and sign in.`,
+          );
+          setBusy(false);
+          return;
+        }
+        const profile = await fetchSupabaseProfile(outcome.user);
+        store.syncExternalSession(profile);
+        router.replace(
+          isSignUp || !profile.consent?.healthDataConsent ? "/onboarding/consent" : next,
+        );
+        return;
+      }
+      const input = {
         email: mode === "email" ? email : undefined,
         phone: mode === "phone" ? phone : undefined,
-        name: name || undefined,
-      });
-      router.replace("/onboarding/consent");
+        password,
+      };
+      if (isSignUp) {
+        store.signUp({ ...input, name: name.trim() });
+        // New patients still owe the detailed consent step before booking.
+        router.replace("/onboarding/consent");
+      } else {
+        const profile = store.signIn(input);
+        router.replace(profile.consent?.healthDataConsent ? next : "/onboarding/consent");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong. Try again.");
       setBusy(false);
     }
   }
+
+  // Until the persisted session has loaded, render nothing — a signed-in
+  // patient would otherwise see the sign-in form flash before being forwarded.
+  if (!ready) return null;
 
   return (
     <div className="flex min-h-[100dvh] flex-col px-gutter pt-[max(28px,var(--safe-t))]">
@@ -76,10 +149,13 @@ function OnboardingScreen() {
         <CareNowLogo />
 
         <div className="mt-8">
-          <h1 className="text-screen font-bold text-ink">Care from home, today</h1>
+          <h1 className="text-screen font-bold text-ink">
+            {isSignUp ? "Create your account" : "Welcome back"}
+          </h1>
           <p className="mt-2 text-[13px] leading-6 text-ink-muted">
-            Sign in to book a video consultation with a licensed doctor. Your records are saved so
-            the next doctor already knows your history.
+            {isSignUp
+              ? "Sign up to book a video consultation with a licensed doctor. Your records are saved so the next doctor already knows your history."
+              : "Sign in to book a video consultation, join your appointment, and see your records."}
           </p>
         </div>
 
@@ -90,9 +166,39 @@ function OnboardingScreen() {
           <Bullet icon={<LockIcon size={18} />} text="Your health notes are private to you and the doctor you book." />
         </ul>
 
-        {/* -------- Identity -------- */}
+        {/* -------- Auth -------- */}
         <Card className="mt-6 p-4">
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-pill bg-canvas p-1">
+          {/* Sign in / sign up switch */}
+          <div className="mb-4 grid grid-cols-2 gap-1 rounded-pill bg-canvas p-1" role="tablist" aria-label="Sign in or sign up">
+            {(
+              [
+                { id: "signIn", label: "Sign in" },
+                { id: "signUp", label: "Sign up" },
+              ] as const
+            ).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                role="tab"
+                aria-selected={authMode === t.id}
+                onClick={() => switchAuthMode(t.id)}
+                className={[
+                  "h-9 rounded-pill text-chip font-medium transition-colors",
+                  authMode === t.id ? "bg-surface text-ink shadow-card" : "text-ink-muted",
+                ].join(" ")}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Email / mobile switch (email only while auth is on Supabase) */}
+          {supabaseMode ? (
+            <p className="mb-4 text-[11px] leading-5 text-ink-muted">
+              Mobile sign-in is coming soon — use your email for now.
+            </p>
+          ) : null}
+          <div className={supabaseMode ? "hidden" : "mb-4 grid grid-cols-2 gap-1 rounded-pill bg-canvas p-1"}>
             {(["email", "phone"] as const).map((m) => (
               <button
                 key={m}
@@ -110,6 +216,22 @@ function OnboardingScreen() {
               </button>
             ))}
           </div>
+
+          {isSignUp ? (
+            <div className="mb-4">
+              <label className="label" htmlFor="name">
+                Full name
+              </label>
+              <input
+                id="name"
+                className="field"
+                autoComplete="name"
+                placeholder="We'll use this on your prescriptions"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+          ) : null}
 
           {mode === "email" ? (
             <div>
@@ -146,38 +268,93 @@ function OnboardingScreen() {
           )}
 
           <div className="mt-4">
-            <label className="label" htmlFor="name">
-              Full name <span className="font-normal">(optional)</span>
+            <label className="label" htmlFor="password">
+              Password
             </label>
-            <input
-              id="name"
-              className="field"
-              placeholder="We'll use this on your prescriptions"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                autoComplete={isSignUp ? "new-password" : "current-password"}
+                className="field pr-11"
+                placeholder={isSignUp ? "At least 8 characters" : "Your password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                aria-invalid={password.length > 0 && !passwordReady}
+                aria-describedby="password-hint"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                className="absolute inset-y-0 right-0 grid w-11 place-items-center text-ink-muted"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+              >
+                {showPassword ? <EyeOffIcon size={20} /> : <EyeIcon size={20} />}
+              </button>
+            </div>
+            <p id="password-hint" className="mt-1.5 text-[11px] leading-5 text-ink-muted">
+              {password.length > 0 && !passwordReady
+                ? `${8 - password.length} more character${8 - password.length === 1 ? "" : "s"} to go.`
+                : isSignUp
+                  ? "At least 8 characters. You'll use this to sign in next time."
+                  : "The password you set when you created your account."}
+            </p>
           </div>
 
-          <div className="mt-3 border-t border-line pt-1">
-            <Checkbox checked={acceptedTerms} onChange={setAcceptedTerms}>
-              I agree to the{" "}
-              <a href="/legal/terms" className="font-medium text-primary-dark underline">
-                Terms of Service
-              </a>{" "}
-              and{" "}
-              <a href="/legal/privacy" className="font-medium text-primary-dark underline">
-                Privacy Policy
-              </a>
-              .
-            </Checkbox>
-            <Checkbox checked={healthConsent} onChange={setHealthConsent}>
-              I consent to CareNow processing my health information — including my symptoms, the
-              doctor&apos;s notes and any prescription — so I can be treated.
-            </Checkbox>
-          </div>
+          {isSignUp ? (
+            <>
+              <div className="mt-4">
+                <label className="label" htmlFor="confirm-password">
+                  Confirm password
+                </label>
+                <input
+                  id="confirm-password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete="new-password"
+                  className="field"
+                  placeholder="Enter the same password again"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  aria-invalid={confirmPassword.length > 0 && !confirmReady}
+                />
+                {confirmPassword.length > 0 && !confirmReady ? (
+                  <p className="mt-1.5 text-[11px] leading-5 text-ink-muted">
+                    Those passwords don&apos;t match yet.
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="mt-3 border-t border-line pt-1">
+                <Checkbox checked={acceptedTerms} onChange={setAcceptedTerms}>
+                  I agree to the{" "}
+                  <a href="/legal/terms" className="font-medium text-primary-dark underline">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="/legal/privacy" className="font-medium text-primary-dark underline">
+                    Privacy Policy
+                  </a>
+                  .
+                </Checkbox>
+                <Checkbox checked={healthConsent} onChange={setHealthConsent}>
+                  I consent to CareNow processing my health information — including my symptoms, the
+                  doctor&apos;s notes and any prescription — so I can be treated.
+                </Checkbox>
+              </div>
+            </>
+          ) : null}
+
+          {notice ? (
+            <div className="mb-3 mt-3">
+              <Notice tone="ok" icon={<LockIcon size={18} />}>
+                {notice}
+              </Notice>
+            </div>
+          ) : null}
 
           {error ? (
-            <div className="mb-3">
+            <div className="mb-3 mt-3">
               <Notice tone="danger" icon={<AlertIcon size={18} />}>
                 {error}
               </Notice>
@@ -185,11 +362,37 @@ function OnboardingScreen() {
           ) : null}
 
           <Button full onClick={submit} loading={busy} disabled={!canContinue} className="mt-2">
-            Continue
+            {isSignUp ? "Create account" : "Sign in"}
           </Button>
 
           <p className="mt-3 text-center text-[11px] leading-5 text-ink-muted">
-            We&apos;ll email you a sign-in code. No password to remember.
+            {isSignUp ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchAuthMode("signIn")}
+                  className="font-medium text-primary-dark underline"
+                >
+                  Sign in
+                </button>
+              </>
+            ) : (
+              <>
+                New to CareNow?{" "}
+                <button
+                  type="button"
+                  onClick={() => switchAuthMode("signUp")}
+                  className="font-medium text-primary-dark underline"
+                >
+                  Create an account
+                </button>
+              </>
+            )}
+          </p>
+
+          <p className="mt-2 text-center text-[11px] leading-5 text-ink-muted">
+            Your password is never stored in plain text.
           </p>
         </Card>
 

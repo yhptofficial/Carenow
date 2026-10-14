@@ -19,7 +19,7 @@ export function LegalLayout({
   title,
   summary,
   children,
-  backHref = "/",
+  backHref = "/onboarding",
 }: {
   title: string;
   summary: string;

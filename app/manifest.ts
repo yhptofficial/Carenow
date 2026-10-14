@@ -13,7 +13,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "CareNow",
     description:
       "Book and attend a video consultation with a licensed doctor from your phone, without leaving home.",
-    start_url: "/",
+    start_url: "/onboarding",
     scope: "/",
     display: "standalone",
     orientation: "portrait",

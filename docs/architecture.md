@@ -44,7 +44,8 @@ Integration points and their current stand-ins:
 
 | Concern | Production | This build | Where to swap |
 | --- | --- | --- | --- |
-| Auth | Supabase Auth (email/phone OTP) | `signIn()` creates or reuses a local patient row | `lib/store.ts → signIn` |
+| Auth | Supabase Auth (email + password) — **live when configured** | Supabase when `NEXT_PUBLIC_SUPABASE_*` is set, local `signIn()`/`signUp()` otherwise; the Supabase session is mirrored into the local store by `components/SupabaseAuthBridge.tsx` | `lib/supabase/` |
+| Auth (mobile) | Supabase phone auth (needs an SMS provider) | Mobile tab stays on the local adapter; hidden when Supabase is configured | `app/onboarding/page.tsx` |
 | Database | Postgres + RLS | localStorage `carenow.db` | `lib/db.ts` |
 | Video | Daily.co (or Twilio/Agora) | `startConsult()` mints a room URL; the stage is a placeholder tile | `app/consult/[bookingId]`, `app/doctor/consult/[bookingId]` |
 | Payments | Stripe / Paystack hosted fields | simulated provider in `lib/rules.ts → paymentOutcomeFor` | `app/checkout/[bookingId]` |
@@ -159,9 +160,13 @@ Vercel, with no environment variables needed for this build. To go live against
 real infrastructure:
 
 1. `supabase db push` (or paste `supabase/schema.sql` into the SQL editor).
-2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`; replace
-   `lib/db.ts` with `@supabase/supabase-js` calls, keeping the `createStoreApi`
-   surface unchanged.
+2. Add `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see
+   `.env.example`). Auth goes live on Supabase immediately — run
+   `supabase/auth_setup.sql` so each `auth.users` row gets a `profiles` row,
+   and decide the email-confirmation setting (Authentication → Providers →
+   Email) to match the sign-up UX. Data still runs locally until `lib/db.ts`
+   is replaced with `@supabase/supabase-js` calls behind the same
+   `createStoreApi` surface.
 3. Add the video provider's key and swap the placeholder tile in
    `app/consult/[bookingId]` for its SDK component.
 4. Add the payment provider's keys and replace the card form with hosted fields.

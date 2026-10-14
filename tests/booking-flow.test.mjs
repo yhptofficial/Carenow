@@ -65,14 +65,94 @@ test("the store seeds a demo patient with history to explore", () => {
 });
 
 test("signing in creates a patient record that persists across reads", () => {
-  const created = api().signIn({ email: "new.patient@example.com", name: "Test Patient" });
+  const created = api().signUp({ email: "new.patient@example.com", name: "Test Patient", password: "correct horse" });
   assert.equal(created.fullName, "Test Patient");
   assert.equal(readDB().session.id, created.id);
   assert.ok(api().myBookings().length === 0, "a new patient starts with no bookings");
   // Signing in again with the same email reuses the record rather than duplicating.
-  const again = api().signIn({ email: "new.patient@example.com" });
+  const again = api().signIn({ email: "new.patient@example.com", password: "correct horse" });
   assert.equal(again.id, created.id);
   assert.equal(readDB().patients.filter((p) => p.email === "new.patient@example.com").length, 1);
+});
+
+test("sign-up creates an account, sign-in verifies it, and neither does the other's job", () => {
+  // Sign-in never creates an account, and sign-up insists on a real password.
+  assert.throws(
+    () => api().signIn({ email: "pw@example.com", password: "correct horse" }),
+    /no account found/i,
+  );
+  assert.throws(
+    () => api().signUp({ email: "pw@example.com", password: "short" }),
+    /at least 8 characters/i,
+  );
+  assert.throws(() => api().signUp({ email: "pw@example.com" }), /set a password/i);
+  assert.equal(readDB().patients.filter((p) => p.email === "pw@example.com").length, 0);
+
+  const created = api().signUp({ email: "pw@example.com", name: "Pw Patient", password: "correct horse" });
+  const record = readDB().patients.find((p) => p.id === created.id);
+  assert.ok(record.passwordHash, "password hash is stored on the record");
+  assert.ok(!record.passwordHash.includes("correct"), "the stored value is not the password");
+  assert.equal(readDB().session.passwordHash, undefined, "the session copy carries no credential");
+  assert.ok(readDB().audit.some((a) => a.actorId === created.id && a.action === "sign_up"));
+
+  // Sign-up never reuses an existing account.
+  assert.throws(
+    () => api().signUp({ email: "pw@example.com", name: "Pw Again", password: "correct horse" }),
+    /already exists/i,
+  );
+  assert.equal(readDB().patients.filter((p) => p.email === "pw@example.com").length, 1);
+
+  // The right password signs back in; the wrong one does not.
+  assert.equal(api().signIn({ email: "pw@example.com", password: "correct horse" }).id, created.id);
+  assert.throws(
+    () => api().signIn({ email: "pw@example.com", password: "wrong password" }),
+    /doesn't match/i,
+  );
+});
+
+test("a Supabase session mirrors into the store and only ends its own session", () => {
+  const profile = {
+    id: "00000000-0000-4000-8000-000000000001",
+    fullName: "Supa Patient",
+    email: "supa@example.com",
+  };
+  api().syncExternalSession(profile);
+  assert.equal(readDB().session.id, profile.id);
+  assert.equal(readDB().session.authProvider, "supabase");
+  assert.equal(readDB().session.passwordHash, undefined);
+
+  // Syncing the same session again (bridge + sign-in screen) is a no-op:
+  // no duplicate patient row, no second sign_in audit entry.
+  const audits = readDB().audit.filter((a) => a.actorId === profile.id && a.action === "sign_in").length;
+  api().syncExternalSession(profile);
+  assert.equal(readDB().patients.filter((p) => p.id === profile.id).length, 1);
+  assert.equal(readDB().audit.filter((a) => a.actorId === profile.id && a.action === "sign_in").length, audits);
+
+  // Supabase signing out ends the mirrored session...
+  api().syncExternalSession(null);
+  assert.equal(readDB().session, null);
+
+  // ...but never a local one: a null sync while the demo account is active
+  // leaves it alone.
+  api().syncExternalSession(profile);
+  api().syncExternalSession(null);
+  signInDemo();
+  api().syncExternalSession(null);
+  assert.equal(readDB().session.email, DEMO_PATIENT_EMAIL);
+});
+
+test("every catalogue doctor maps to a unique Supabase doctor uuid", async () => {
+  const { SUPABASE_DOCTOR_IDS } = await import("../lib/supabase/bookings.ts");
+  const listed = api().listDoctors();
+  assert.ok(listed.length > 0);
+  for (const v of listed) {
+    assert.ok(SUPABASE_DOCTOR_IDS[v.doctor.id], `no Supabase uuid for ${v.doctor.id}`);
+  }
+  const uuids = Object.values(SUPABASE_DOCTOR_IDS);
+  assert.equal(new Set(uuids).size, uuids.length, "Supabase doctor uuids must be unique");
+  for (const u of uuids) {
+    assert.match(u, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+  }
 });
 
 test("only verified doctors are listed, and the unverified one is withheld", () => {
@@ -125,7 +205,7 @@ test("a second patient cannot take a slot already held", () => {
   const first = api().createBooking({ doctorId, slotId: slot.id, intake: INTAKE });
 
   // Same device, different account.
-  api().signIn({ email: "other.patient@example.com", name: "Other Patient" });
+  api().signUp({ email: "other.patient@example.com", name: "Other Patient", password: "correct horse" });
   assert.throws(
     () => api().createBooking({ doctorId, slotId: slot.id, intake: INTAKE }),
     /just taken/i,
@@ -393,7 +473,7 @@ test("a patient sees their own prescription but not another patient's", () => {
   assert.ok(api().getPrescription(id), "own prescription is readable");
 
   // Sign in as a different patient: the same id must resolve to nothing.
-  api().signIn({ email: "someone.else@example.com", name: "Someone Else" });
+  api().signUp({ email: "someone.else@example.com", name: "Someone Else", password: "correct horse" });
   assert.equal(api().getPrescription(id), null);
   assert.equal(api().myPrescriptions().length, 0);
 });
