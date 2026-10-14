@@ -136,9 +136,12 @@ export default function DoctorSignInPage() {
         </Notice>
       </div>
 
-      <footer className="py-6 text-center">
-        <Link href="/onboarding" className="text-[12px] font-medium text-ink-muted underline">
+      <footer className="space-y-2 py-6 text-center">
+        <Link href="/onboarding" className="block text-[12px] font-medium text-ink-muted underline">
           I&apos;m a patient — go to CareNow
+        </Link>
+        <Link href="/admin" className="block text-[12px] font-medium text-ink-muted underline">
+          CareNow operations — admin console
         </Link>
       </footer>
     </div>

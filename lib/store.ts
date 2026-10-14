@@ -16,6 +16,7 @@ import {
   uid,
 } from "./db";
 import { SPECIALTIES, specialtyLabel } from "./catalog";
+import { formatMoney } from "./currency";
 import {
   syncBookingCancelled,
   syncBookingCreated,
@@ -34,20 +35,28 @@ import {
   cancellationOutcome,
   canJoinConsultation,
   canReadPrescription,
+  isLastAdmin,
   isValidCardNumber,
   last4,
+  licenceConflict,
+  licenceNumberError,
   paymentOutcomeFor,
+  platformMetrics as computeMetrics,
+  rejectionReasonError,
   slotBlockReason,
   validatePrescription,
+  type PlatformMetrics,
   type PrescriptionDraft,
 } from "./rules";
 import type {
+  AdminUser,
   AuditEntry,
   Booking,
   Database,
   ConsentRecord,
   Doctor,
   DoctorAvailabilityDay,
+  DoctorVerification,
   Intake,
   Medication,
   NextAvailability,
@@ -140,6 +149,94 @@ export interface BookingView extends Booking {
   joinable: boolean;
   /** Countdown label for the card. */
   countdown: string;
+}
+
+/* ------------------------------------------------------------------ *
+ * Admin console projections
+ * ------------------------------------------------------------------ */
+
+/**
+ * One line in the console's account directory.
+ *
+ * Patients, doctors and ops staff sit in one list because that is how the
+ * production schema holds them: a single `profiles` table where `role` decides
+ * what you can do. `admin` is the extra seat layered on top, and `baseRole` is
+ * what revoking that seat returns the account to.
+ */
+export interface AccountRow {
+  id: string;
+  fullName: string;
+  email?: string;
+  baseRole: "patient" | "doctor" | "staff";
+  admin?: { grantedAt: string; grantedBy?: string };
+  /** Doctors only: whether the listing is live to patients. */
+  verified?: boolean;
+  /** Patients only: consultations on file. */
+  bookings?: number;
+}
+
+/** Something on the platform an operator should probably look at. */
+export interface OpsAlert {
+  id: string;
+  tone: "info" | "warn" | "danger";
+  title: string;
+  detail: string;
+}
+
+/**
+ * Patients, doctors and ops staff in one list, with their seats attached.
+ *
+ * Production holds all three in a single `profiles` table where `role` decides
+ * what you can do; `admin` here is that role, and `baseRole` is what revoking
+ * the seat returns the account to.
+ */
+function buildDirectory(db: Database): AccountRow[] {
+  const rows: AccountRow[] = [];
+  const seatView = (id: string): AccountRow["admin"] => {
+    const seat = db.admins.find((a) => a.id === id);
+    return seat ? { grantedAt: seat.grantedAt, grantedBy: seat.grantedBy } : undefined;
+  };
+
+  for (const p of db.patients) {
+    rows.push({
+      id: p.id,
+      fullName: p.fullName,
+      email: p.email,
+      baseRole: "patient",
+      admin: seatView(p.id),
+      bookings: db.bookings.filter((b) => b.patientId === p.id).length,
+    });
+  }
+  for (const doc of db.doctors) {
+    rows.push({
+      id: doc.id,
+      fullName: doc.fullName,
+      email: doc.email,
+      baseRole: "doctor",
+      admin: seatView(doc.id),
+      verified: doc.verified,
+    });
+  }
+  // Ops-only accounts hold no patient or doctor record, so neither loop above
+  // reaches them.
+  for (const a of db.admins) {
+    if (a.baseRole !== "staff") continue;
+    rows.push({
+      id: a.id,
+      fullName: a.fullName,
+      email: a.email,
+      baseRole: "staff",
+      admin: seatView(a.id),
+    });
+  }
+
+  const rank = { staff: 0, doctor: 1, patient: 2 };
+  return rows.sort((a, b) => {
+    // Seats first: the console's own people are what an operator manages most.
+    if (Boolean(b.admin) !== Boolean(a.admin)) return a.admin ? -1 : 1;
+    if (rank[a.baseRole] !== rank[b.baseRole]) return rank[a.baseRole] - rank[b.baseRole];
+    return a.fullName.localeCompare(b.fullName);
+  });
 }
 
 function doctorById(id: string): Doctor | undefined {
@@ -248,6 +345,27 @@ export function createStoreApi(db: Database, ready: boolean) {
   const session = db.session;
 
   type AuthInput = { email?: string; phone?: string; name?: string; password?: string };
+
+  /* ---- Console helpers ---------------------------------------------------
+   * Every admin command authorises through these, so a screen can never widen
+   * its own access by calling a command directly — the check lives with the
+   * command, not in the button that happens to render it.
+   */
+
+  /** The seat making this request, or null. */
+  function actingSeat(): AdminUser | null {
+    const id = db.adminSession?.adminId;
+    return id ? (db.admins.find((a) => a.id === id) ?? null) : null;
+  }
+
+  /** Any account, wherever it lives. */
+  function accountById(id: string): AccountRow | null {
+    return buildDirectory(db).find((row) => row.id === id) ?? null;
+  }
+
+  function subjectTypeFor(account: { baseRole: AccountRow["baseRole"] }): AuditEntry["subjectType"] {
+    return account.baseRole === "doctor" ? "doctor" : "patient";
+  }
 
   /**
    * Sign-in and sign-up are deliberately separate doors into the same session:
@@ -940,6 +1058,283 @@ export function createStoreApi(db: Database, ready: boolean) {
 
       unverifiedDoctors(): Doctor[] {
         return db.doctors.filter((d) => !d.verified);
+      },
+
+      /* ---------------- Admin console ---------------- */
+
+      adminSession: actingSeat(),
+
+      /**
+       * Operations sign-in.
+       *
+       * The third door into the app, after the patient and clinician ones.
+       * Production sends a one-time code to the staff address and the seat
+       * arrives in the JWT; here the email is matched against the seats in the
+       * store, which is the same lookup the console then authorises every
+       * command against.
+       */
+      signInAdmin(email: string): AdminUser {
+        const wanted = email.trim().toLowerCase();
+        const seat = db.admins.find((a) => a.email.toLowerCase() === wanted);
+        if (!seat) {
+          throw new CareNowError(
+            "No CareNow operations account matches that email.",
+            "account_not_found",
+            "Seats are handed out from inside the console by any existing admin.",
+          );
+        }
+        mutate((d) => {
+          const row = d.admins.find((a) => a.id === seat.id);
+          if (row) row.lastSignedInAt = new Date().toISOString();
+          d.adminSession = { adminId: seat.id };
+          d.audit.push(auditEntry("admin", seat.id, "sign_in", "session", seat.id));
+        });
+        return seat;
+      },
+
+      signOutAdmin(): void {
+        mutate((d) => {
+          d.adminSession = null;
+        });
+      },
+
+      /** Every account the console can act on, seats and all. */
+      accountDirectory(): AccountRow[] {
+        return buildDirectory(db);
+      },
+
+      /**
+       * Hand a seat to an existing account.
+       *
+       * This is `update profiles set role = 'admin'` from the console. Anyone
+       * holding a seat can run it — one admin role, one set of powers — so the
+       * only check is that there is a seat making the request at all. The
+       * database backs the same rule with `guard_profile_role()`: an account
+       * cannot grant itself the role, but an existing admin can grant it to
+       * anyone.
+       */
+      grantAdmin(args: { accountId: string }): void {
+        const actor = actingSeat();
+        if (!actor) throw new CareNowError("Sign in to the console first.", "not_signed_in");
+        if (db.admins.some((a) => a.id === args.accountId)) {
+          throw new CareNowError("That account already holds a seat.", "not_allowed");
+        }
+        const account = accountById(args.accountId);
+        if (!account) throw new CareNowError("Account not found.", "not_found");
+
+        const at = new Date().toISOString();
+        mutate((d) => {
+          d.admins.push({
+            id: account.id,
+            fullName: account.fullName,
+            email: account.email ?? account.id,
+            baseRole: account.baseRole,
+            grantedAt: at,
+            grantedBy: actor.email,
+          });
+          d.audit.push(
+            auditEntry(
+              "admin",
+              actor.id,
+              "admin_granted",
+              subjectTypeFor(account),
+              account.id,
+              account.fullName,
+            ),
+          );
+        });
+      },
+
+      /**
+       * Take a seat back. The account keeps whatever it was before.
+       *
+       * Any seat may do this, including removing another admin. The single
+       * refusal is the last seat standing: removing it would leave a platform
+       * with nobody able to administer it, and no in-app way to recover.
+       */
+      revokeAdmin(accountId: string): void {
+        const actor = actingSeat();
+        if (!actor) throw new CareNowError("Sign in to the console first.", "not_signed_in");
+        const seat = db.admins.find((a) => a.id === accountId);
+        if (!seat) throw new CareNowError("That account holds no seat.", "not_found");
+        if (isLastAdmin(db.admins, accountId)) {
+          throw new CareNowError(
+            "That is the last admin seat.",
+            "not_allowed",
+            "Give somebody else a seat before removing this one.",
+          );
+        }
+
+        const account = accountById(accountId);
+        mutate((d) => {
+          d.admins = d.admins.filter((a) => a.id !== accountId);
+          if (d.adminSession?.adminId === accountId) d.adminSession = null;
+          d.audit.push(
+            auditEntry(
+              "admin",
+              actor.id,
+              "admin_revoked",
+              account ? subjectTypeFor(account) : "patient",
+              accountId,
+              account?.fullName ?? seat.fullName,
+            ),
+          );
+        });
+      },
+
+      /** Clinicians waiting for a credential check, longest wait first. */
+      verificationQueue(): Doctor[] {
+        return db.doctors
+          .filter((d) => !d.verified)
+          .sort((a, b) => a.fullName.localeCompare(b.fullName));
+      },
+
+      /** Every credential decision, newest first. */
+      verificationDecisions(): DoctorVerification[] {
+        return [...db.verifications].sort((a, b) => b.decidedAt.localeCompare(a.decidedAt));
+      },
+
+      /** The most recent decision about one clinician, if there is one. */
+      verificationFor(doctorId: string): DoctorVerification | null {
+        return (
+          this.verificationDecisions().find((d) => d.doctorId === doctorId) ?? null
+        );
+      },
+
+      /**
+       * Approve a clinician's credentials.
+       *
+       * The MDCN number is required and validated, because it is the number
+       * that ends up on the patient-facing listing as proof: the console is the
+       * only place a human is looking at the register, so a typo here cannot be
+       * caught downstream.
+       */
+      approveDoctor(args: { doctorId: string; licenceNumber: string }): void {
+        const actor = actingSeat();
+        if (!actor) throw new CareNowError("Sign in to the console first.", "not_signed_in");
+        const doctor = db.doctors.find((d) => d.id === args.doctorId);
+        if (!doctor) throw new CareNowError("That clinician is no longer on file.", "not_found");
+
+        const problem = licenceNumberError(args.licenceNumber);
+        if (problem) throw new CareNowError("That number can't be used.", "not_allowed", problem);
+
+        const clash = licenceConflict(db.doctors, args.licenceNumber, doctor.id);
+        if (clash) {
+          throw new CareNowError(
+            `That number is already on ${clash.fullName}'s listing.`,
+            "not_allowed",
+            "One registration number is one clinician — check the register again.",
+          );
+        }
+
+        const licenceNumber = args.licenceNumber.trim().toUpperCase();
+        const at = new Date().toISOString();
+        mutate((d) => {
+          const row = d.doctors.find((x) => x.id === doctor.id);
+          if (row) {
+            row.verified = true;
+            row.verification = { licenceNumber, verifiedAt: at, verifiedBy: actor.email };
+          }
+          d.verifications.push({
+            id: uid("vr"),
+            doctorId: doctor.id,
+            decision: "approved",
+            licenceNumber,
+            decidedAt: at,
+            decidedBy: actor.email,
+            adminId: actor.id,
+          });
+          d.audit.push(
+            auditEntry("admin", actor.id, "doctor_verified", "doctor", doctor.id, `${doctor.fullName} · ${licenceNumber}`),
+          );
+        });
+      },
+
+      /** Turn down an application, with a reason the clinician can act on. */
+      rejectDoctor(args: { doctorId: string; reason: string }): void {
+        const actor = actingSeat();
+        if (!actor) throw new CareNowError("Sign in to the console first.", "not_signed_in");
+        const doctor = db.doctors.find((d) => d.id === args.doctorId);
+        if (!doctor) throw new CareNowError("That clinician is no longer on file.", "not_found");
+
+        const problem = rejectionReasonError(args.reason);
+        if (problem) throw new CareNowError("The decision needs a reason.", "not_allowed", problem);
+
+        const reason = args.reason.trim();
+        const at = new Date().toISOString();
+        mutate((d) => {
+          const row = d.doctors.find((x) => x.id === doctor.id);
+          if (row) row.verified = false;
+          d.verifications.push({
+            id: uid("vr"),
+            doctorId: doctor.id,
+            decision: "rejected",
+            licenceNumber: "",
+            reason,
+            decidedAt: at,
+            decidedBy: actor.email,
+            adminId: actor.id,
+          });
+          d.audit.push(
+            auditEntry("admin", actor.id, "doctor_rejected", "doctor", doctor.id, `${doctor.fullName} · ${reason}`),
+          );
+        });
+      },
+
+      /** Headline numbers for the overview tab. */
+      platformMetrics(): PlatformMetrics {
+        return computeMetrics(db.bookings);
+      },
+
+      /**
+       * What needs an operator right now.
+       *
+       * Deliberately a short list of things with a decision attached — an
+       * alert nobody can act on is noise, and the console's job is to surface
+       * money and credentials that are stuck.
+       */
+      opsAlerts(): OpsAlert[] {
+        const now = Date.now();
+        const alerts: OpsAlert[] = [];
+
+        const pending = db.doctors.filter((d) => !d.verified);
+        if (pending.length) {
+          alerts.push({
+            id: "verification",
+            tone: "warn",
+            title: `${pending.length} clinician ${pending.length === 1 ? "application" : "applications"} waiting`,
+            detail:
+              "Unverified clinicians are invisible to patients and cannot accept bookings until a credential check is recorded.",
+          });
+        }
+
+        const stalled = db.bookings.filter(
+          (b) =>
+            (b.payment.status === "unpaid" || b.payment.status === "failed") &&
+            new Date(b.startsAt).getTime() < now,
+        );
+        if (stalled.length) {
+          const value = stalled.reduce((sum, b) => sum + b.payment.amount, 0);
+          alerts.push({
+            id: "stalled-payment",
+            tone: "danger",
+            title: `${formatMoney(value)} never collected`,
+            detail: `${stalled.length} consultation${stalled.length === 1 ? "" : "s"} passed without payment clearing. The slots were held either way.`,
+          });
+        }
+
+        const missed = db.bookings.filter((b) => b.status === "no_show");
+        if (missed.length) {
+          const value = missed.reduce((sum, b) => sum + b.payment.amount, 0);
+          alerts.push({
+            id: "no-shows",
+            tone: "info",
+            title: `${missed.length} consultation${missed.length === 1 ? "" : "s"} nobody joined`,
+            detail: `${formatMoney(value)} is due back to patients under the no-show policy. Check the refunds actually landed.`,
+          });
+        }
+
+        return alerts;
       },
 
       /* ---------------- Misc ---------------- */
