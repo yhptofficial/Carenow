@@ -4,7 +4,7 @@
 
 ```
 Next.js 16 (App Router) PWA
-├── app/                    route segments (patient + clinician)
+├── app/                    route segments (patient, clinician, operations)
 ├── components/             design-system primitives
 ├── lib/
 │   ├── types.ts            domain types — mirror supabase/schema.sql 1:1
@@ -13,7 +13,8 @@ Next.js 16 (App Router) PWA
 │   ├── rules.ts            every business rule, as pure functions
 │   ├── db.ts               persistence adapter + seed data
 │   └── store.ts            the command API screens actually call
-├── supabase/schema.sql     production schema, RLS, RPCs, storage
+├── supabase/               production schema, RLS, RPCs, storage,
+│                           admin access control (admin_setup.sql)
 ├── tests/                  unit + integration tests (Node test runner)
 └── public/                 icons, service worker
 ```
@@ -115,6 +116,45 @@ The verification gate is enforced in three places: the `public_doctors` view, th
 `book_slot` function, and the client store — so an unverified doctor is invisible,
 unbookable, and untestable through the UI.
 
+### Admin seats
+
+One role, no tiers. Anyone holding the admin role gets the whole console:
+verify clinician credentials, read the audit trail, and grant or revoke seats.
+An earlier revision split seats into `owner` and `verifier` scopes; that has been
+removed, so there is no longer an in-app privilege ladder — and therefore no rung
+to escalate up.
+
+What that means in practice, stated plainly: **a seat can mint more seats**, so
+the admin role is the highest-value permission in the product. Grant it the way
+you would hand over a master key, not a staff badge.
+
+Two rules survive, and both protect the platform rather than restricting a person:
+
+- **A profile cannot change its own role.** Row-level security filters rows, not
+  columns, so the base schema's `update own profile` policy would let any
+  signed-in patient run `update profiles set role = 'admin'` and read every
+  health record on the platform. `guard_profile_role()` in
+  `supabase/admin_setup.sql` closes that. An admin granting the role to somebody
+  else is allowed — that is the console working as designed.
+- **The last seat cannot be given up or deleted.** A single mis-click would
+  otherwise leave a platform with nobody able to administer it and no in-app way
+  back. `isLastAdmin()` in `lib/rules.ts` decides it in the console; the same
+  trigger decides it in the database.
+
+The rule is enforced in both layers from one place per layer: the store checks
+with the command, not in the button that renders it, so a screen cannot widen its
+own access by calling a command directly.
+
+The console shows **accounts, not records**. An admin technically has access to
+clinical data; the dashboard surfaces names, roles and credential decisions,
+which is the data-minimisation position the privacy policy commits to under the
+NDPA.
+
+Credential decisions are stored separately from the doctor rows
+(`Database.verifications`; a `doctor_verifications` table in production) because
+`initStore` re-takes `lib/catalog.ts` on every load. They replay through
+`applyVerifications()`, ordered by when the decision was made.
+
 ## Rendering and data flow
 
 - Screens are client components reading a `useSyncExternalStore` snapshot.
@@ -167,6 +207,11 @@ real infrastructure:
    Email) to match the sign-up UX. Data still runs locally until `lib/db.ts`
    is replaced with `@supabase/supabase-js` calls behind the same
    `createStoreApi` surface.
+2b. Run `supabase/admin_setup.sql` **before** letting anyone into `/admin` — it
+   adds the policies the console writes through (an admin updating a clinician's
+   verification, in particular) and the trigger that stops a profile promoting
+   itself. Then mint the first admin seat from the SQL editor:
+   `select public.grant_admin('you@example.com');`
 3. Add the video provider's key and swap the placeholder tile in
    `app/consult/[bookingId]` for its SDK component.
 4. Add the payment provider's keys and replace the card form with hosted fields.

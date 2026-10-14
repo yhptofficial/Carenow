@@ -114,6 +114,14 @@ safe area. The active tab is a teal filled pill holding a white icon *and* its
 label; inactive tabs are grey outline icons only. `aria-current="page"` marks the
 active tab.
 
+**Admin console** — `app/admin/dashboard`. Composes the same primitives rather
+than introducing a desktop idiom: `DetailHeader` with the seat scope as its
+trailing action, a scrolling `Chip` row for the four tabs, `Card` + `Sheet` for
+the verification flow, and the `EmptyState`/`Notice`/`useToast` set for feedback.
+State colours carry the console's meaning exactly as they do on the patient side
+— amber for an application awaiting a decision, red for money that never
+cleared — and every status is labelled as well as coloured.
+
 **Consult room** — `app/consult/[bookingId]`. Dark teal stage with a circular
 doctor tile, picture-in-picture self view, and a round-button control bar
 (mic / camera / notes / prescription) plus a red leave button.

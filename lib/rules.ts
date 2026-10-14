@@ -290,6 +290,157 @@ export function doctorMayReadHealth(
 }
 
 /* ------------------------------------------------------------------ *
+ * Admin console — access control and credential verification
+ * ------------------------------------------------------------------ */
+
+/**
+ * One admin role, one set of powers.
+ *
+ * An earlier revision split seats into `owner` and `verifier` scopes so a
+ * credentialing officer could not widen their own access. That split has been
+ * removed at the product owner's direction: anyone holding the admin role gets
+ * the whole console, including the ability to hand out and revoke seats.
+ *
+ * The one rule that survives is the one about not locking everybody out —
+ * see `isLastAdmin()` — because that is a footgun rather than a privilege
+ * boundary, and it protects the platform instead of restricting a person.
+ */
+
+/**
+ * True when removing this seat would leave the platform with no admin at all.
+ *
+ * Not a permission check: it applies to every seat equally, and it is what
+ * stops the last admin from revoking themselves (or being revoked) out of the
+ * one screen that can hand a seat back. It is enforced in the store and, in
+ * production, by `guard_profile_role()` in `supabase/admin_setup.sql`.
+ */
+export function isLastAdmin(
+  seats: { id: string }[],
+  targetId: string,
+): boolean {
+  return seats.length > 0 && seats.every((seat) => seat.id === targetId);
+}
+
+/** MDCN registration numbers are written `MDCN/R/41208`. */
+export function isValidLicenceNumber(value: string): boolean {
+  return /^MDCN\/[A-Z]{1,3}\/\d{4,6}$/i.test(value.trim());
+}
+
+/**
+ * Split MDCN numbers never a licence number and never an address.
+ *
+ * A typo here cannot be caught by the council later: `verified_at` is what the
+ * patient-facing listing trusts, so the format is checked before the decision
+ * is recorded.
+ */
+export function licenceNumberError(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return "Enter the MDCN number you checked against the register.";
+  if (!isValidLicenceNumber(trimmed)) {
+    return "That doesn't look like an MDCN number. They read MDCN/R/41208.";
+  }
+  return null;
+}
+
+export function rejectionReasonError(value: string): string | null {
+  const trimmed = value.trim();
+  if (trimmed.length < 10) {
+    return "Give the clinician a reason they can act on (at least 10 characters).";
+  }
+  return null;
+}
+
+/**
+ * The other clinician already holding this MDCN number, if any.
+ *
+ * One registration number is one doctor. Two listings sharing a number means
+ * one of them is practising on somebody else's licence — which is the exact
+ * failure the manual credential check exists to catch, so it is checked again
+ * at the moment of approval and not only by eye.
+ */
+export function licenceConflict(
+  doctors: { id: string; fullName: string; verification: { licenceNumber: string } }[],
+  licenceNumber: string,
+  exceptDoctorId: string,
+): { id: string; fullName: string } | null {
+  const wanted = licenceNumber.trim().toUpperCase();
+  const clash = doctors.find(
+    (d) => d.id !== exceptDoctorId && d.verification.licenceNumber.trim().toUpperCase() === wanted,
+  );
+  return clash ? { id: clash.id, fullName: clash.fullName } : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Platform metrics
+ * ------------------------------------------------------------------ */
+
+/** The booking fields the money and volume figures are computed from. */
+export interface MetricBooking {
+  status: BookingStatus;
+  durationMins: number;
+  patientId: string;
+  doctorId: string;
+  payment: { status: PaymentStatus; amount: number };
+}
+
+export interface PlatformMetrics {
+  total: number;
+  /** Confirmed or in progress — a consultation still to happen. */
+  upcoming: number;
+  completed: number;
+  cancelled: number;
+  noShow: number;
+  awaitingPayment: number;
+  /** Captured and kept: paid, and not since refunded. */
+  collected: number;
+  /** Money returned to patients. */
+  refunded: number;
+  /** Value of bookings that were never paid for. */
+  outstanding: number;
+  /** 0–1, over consultations that reached a decision (completed / no-show). */
+  noShowRate: number;
+  /** 0–1, of every booking taken. */
+  completionRate: number;
+  /** Minutes of clinical time delivered. */
+  consultMinutes: number;
+  patients: number;
+  doctors: number;
+}
+
+/**
+ * Everything the console's headline numbers are derived from.
+ *
+ * Refunded bookings are counted as money returned rather than money kept —
+ * the difference between `collected` and `refunded` is what the platform
+ * actually held on to, which is the figure an operator is asked for.
+ */
+export function platformMetrics(bookings: MetricBooking[]): PlatformMetrics {
+  const paid = bookings.filter((b) => b.payment.status === "paid");
+  const refunded = bookings.filter((b) => b.payment.status === "refunded");
+  const completed = bookings.filter((b) => b.status === "completed");
+  const noShow = bookings.filter((b) => b.status === "no_show");
+  const decided = completed.length + noShow.length;
+  const sum = (list: MetricBooking[]) => list.reduce((total, b) => total + b.payment.amount, 0);
+
+  return {
+    total: bookings.length,
+    upcoming: bookings.filter((b) => b.status === "confirmed" || b.status === "in_progress").length,
+    completed: completed.length,
+    cancelled: bookings.filter((b) => b.status === "cancelled").length,
+    noShow: noShow.length,
+    awaitingPayment: bookings.filter((b) => b.status === "pending_payment").length,
+    collected: sum(paid),
+    refunded: sum(refunded),
+    outstanding: sum(bookings.filter((b) => b.payment.status === "unpaid" || b.payment.status === "failed")),
+    noShowRate: decided ? noShow.length / decided : 0,
+    completionRate: bookings.length ? completed.length / bookings.length : 0,
+    consultMinutes: completed.reduce((total, b) => total + b.durationMins, 0),
+    patients: new Set(bookings.map((b) => b.patientId)).size,
+    doctors: new Set(bookings.map((b) => b.doctorId)).size,
+  };
+}
+
+/* ------------------------------------------------------------------ *
  * Misc form rules
  * ------------------------------------------------------------------ */
 

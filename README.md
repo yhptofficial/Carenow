@@ -12,7 +12,7 @@ Protection Act 2023.
 ```bash
 npm install
 npm run dev          # http://localhost:3000
-npm test             # 69 unit + integration tests, no extra dependencies
+npm test             # 128 unit + integration tests, no extra dependencies
 npm run build        # production build
 ```
 
@@ -41,6 +41,7 @@ clinician side is at `/doctor`.
 | Legal | `/legal/privacy`, `/legal/terms` | Privacy policy and terms |
 | Clinician | `/doctor`, `/doctor/dashboard` | Sign-in, today's queue, pre-call brief, earnings |
 | Consult desk | `/doctor/consult/[bookingId]` | Call bar, private notes, prescription writer |
+| Operations | `/admin`, `/admin/dashboard` | Sign-in, platform metrics, credential verification, seats, audit trail — one admin role, no tiers |
 | Offline | `/offline` | Served by the service worker when a screen isn't cached |
 
 ## Try the flows that matter
@@ -59,6 +60,13 @@ clinician side is at `/doctor`.
    prescription, then check it as the patient in `/profile/prescriptions`.
 6. **No-shows.** The demo account includes a consultation where nobody joined;
    the refund appears on the booking and in the visit timeline.
+7. **The console.** `/admin` → *Choose a staff account* → either admin works.
+   *Verification* has Dr. Haruna Bala waiting: approve him with an MDCN number
+   and he appears in patient search; turn him down and he stays hidden. *People*
+   shows every account with its seats — grant one to a patient and they can sign
+   in straight away, because there is one admin role and it is not tiered.
+   Try to remove the last seat: the console refuses, so the platform can never
+   end up with nobody able to administer it.
 
 ## Architecture, in one paragraph
 
@@ -72,6 +80,11 @@ production schema: 9 tables, RLS on all of them, 29 policies, and RPCs for
 booking, payment, cancellation and no-shows. Swapping it in is a change to one
 file.
 
+`supabase/admin_setup.sql` carries the matching server side: the policies that
+let an admin verify a clinician, a `grant_admin()` bootstrap function for the
+first seat, and a trigger that stops a profile changing its own `role` — the
+escalation `update own profile` would otherwise allow.
+
 More detail: [`docs/architecture.md`](docs/architecture.md) ·
 [`docs/design-system.md`](docs/design-system.md) ·
 [`docs/definition-of-done.md`](docs/definition-of-done.md)
@@ -83,7 +96,7 @@ app/                    route segments — patient, clinician, legal, offline
   (app)/                the four tab screens, which own the bottom nav
 components/             design-system primitives + icons
 lib/                    types, catalogue, availability, rules, store, db
-supabase/schema.sql     production schema, RLS, RPCs, storage policies
+supabase/               production schema, RLS, RPCs, admin access control
 tests/                  Node test runner suites
 docs/                   design system, architecture, definition of done
 public/                 icons, service worker
@@ -128,7 +141,7 @@ catalogue is one file.
 | Framework | Next.js 16 (App Router), React 19, TypeScript in strict mode |
 | Styling | Tailwind CSS 3.4 with the design tokens above |
 | Data | local adapter now; Supabase (Postgres + RLS) in production |
-| Auth | Supabase Auth (email + password) when `NEXT_PUBLIC_SUPABASE_*` is set (see `.env.example` + `supabase/auth_setup.sql`); local accounts + demo user otherwise |
+| Auth | Supabase Auth (email + password) when `NEXT_PUBLIC_SUPABASE_*` is set (see `.env.example` + `supabase/auth_setup.sql`); local accounts + demo user otherwise. Three doors: patients, clinicians, console staff |
 | Video | provider-agnostic room lifecycle; Daily.co recommended by the PRD |
 | Payments | simulated provider now; Stripe or Paystack in production |
 | Hosting | Vercel; ships as an installable PWA with an offline fallback |
@@ -148,10 +161,14 @@ interfaces.
 npm test
 ```
 
-69 tests: refund and no-show policy, join windows, card outcomes, prescription
-validation, availability determinism, catalogue integrity, access control, and
-the full booking journey against the real store (including declined payments,
-double payment, cross-doctor prescribing and cross-patient record access).
+128 tests: refund and no-show policy, join windows, card outcomes, prescription
+validation, availability determinism, catalogue integrity, access control, the
+full booking journey against the real store (including declined payments, double
+payment, cross-doctor prescribing and cross-patient record access), and the
+console — credential decisions and their replay after a reload, licence-number
+format and collision checks, that any admin can reach every console capability,
+the last-seat rule, that the account directory exposes no clinical data, and that
+a stored document written by an older build is repaired rather than crashed on.
 
 ## Safety and regulation
 

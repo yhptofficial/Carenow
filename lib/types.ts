@@ -5,7 +5,62 @@
  * local adapter and a real Supabase adapter can satisfy the same interface.
  */
 
-export type Role = "patient" | "doctor";
+export type Role = "patient" | "doctor" | "admin";
+
+/**
+ * An admin seat.
+ *
+ * One role, one set of powers: anyone holding a seat can do everything the
+ * console does — verify credentials, read the audit trail, and hand out or
+ * revoke seats. An earlier revision split seats into `owner` and `verifier`
+ * scopes; that has been removed, so there is no longer any in-app privilege
+ * ladder to escalate.
+ *
+ * What that costs, stated plainly: a seat is now equivalent to being able to
+ * mint more seats, so `admins` is the highest-value table in the system. Grant
+ * it the way you would hand over a master key rather than a staff badge — and
+ * note that `guard_profile_role()` in `supabase/admin_setup.sql` is what stops
+ * a profile granting the role to itself.
+ *
+ * `id` is the profile id the seat belongs to, matching `profiles.id` in
+ * `supabase/schema.sql` — an admin there is a `profiles` row with
+ * `role = 'admin'`, and the same profile can hold bookings. Staff who exist
+ * only to run the console (`baseRole: "staff"`) have no patient or doctor
+ * record, exactly like a Supabase profile with no `patient_health` row.
+ */
+export interface AdminUser {
+  id: string;
+  fullName: string;
+  email: string;
+  /** What the account is *without* its admin seat. Revoking returns them here. */
+  baseRole: "patient" | "doctor" | "staff";
+  grantedAt: string;
+  /** Email of the admin who handed out the seat. Absent for founding staff. */
+  grantedBy?: string;
+  lastSignedInAt?: string;
+}
+
+/**
+ * A credential decision, recorded once and never edited.
+ *
+ * Doctor rows are re-taken from `lib/catalog.ts` on every page load, so a
+ * verification made in the browser would not survive a refresh if it lived on
+ * the doctor. Decisions are therefore append-only here and replayed on load —
+ * the same shape a `doctor_verifications` table would have in Postgres, where
+ * `doctors.verified_at` is the durable column and this is the trail behind it.
+ */
+export interface DoctorVerification {
+  id: string;
+  doctorId: string;
+  decision: "approved" | "rejected";
+  /** The MDCN number the reviewer actually checked. Required to approve. */
+  licenceNumber: string;
+  /** Why an application was turned down. Required to reject. */
+  reason?: string;
+  decidedAt: string;
+  decidedBy: string;
+  adminId: string;
+}
 
 export type SpecialtyId =
   | "general"
@@ -224,7 +279,7 @@ export interface Rating {
 export interface AuditEntry {
   id: string;
   at: string;
-  actorType: "patient" | "doctor" | "system";
+  actorType: "patient" | "doctor" | "system" | "admin";
   actorId: string;
   action:
     | "sign_up"
@@ -241,7 +296,11 @@ export interface AuditEntry {
     | "consult_started"
     | "consult_ended"
     | "prescription_issued"
-    | "rating_submitted";
+    | "rating_submitted"
+    | "doctor_verified"
+    | "doctor_rejected"
+    | "admin_granted"
+    | "admin_revoked";
   /** Which record the action touched. */
   subjectType: "booking" | "patient" | "doctor" | "prescription" | "session";
   subjectId: string;
@@ -263,10 +322,16 @@ export interface Database {
   prescriptions: Prescription[];
   ratings: Rating[];
   audit: AuditEntry[];
+  /** Admin seats. Keyed by profile id — see `AdminUser`. */
+  admins: AdminUser[];
+  /** Append-only credential decisions replayed onto `doctors` on load. */
+  verifications: DoctorVerification[];
   /** Points at `patients[].id`. Null until sign-in completes. */
   session: PatientSession | null;
   /** Clinician-side session, kept separate from the patient one. */
   doctorSession: { doctorId: string } | null;
+  /** Operations-side session, kept separate from both. */
+  adminSession: { adminId: string } | null;
   onboardingSeen: boolean;
 }
 

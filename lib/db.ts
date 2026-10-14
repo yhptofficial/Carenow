@@ -2,10 +2,12 @@ import { DOCTORS } from "./catalog";
 import { noShowResolution } from "./rules";
 import { slotsForDay, toISODate, timeLabel } from "./schedule";
 import type {
+  AdminUser,
   AuditEntry,
   Booking,
   Database,
   Doctor,
+  DoctorVerification,
   Medication,
   PatientProfile,
   Prescription,
@@ -13,7 +15,7 @@ import type {
   Slot,
 } from "./types";
 
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const DB_KEY = "carenow.db";
 
 /* ------------------------------------------------------------------ *
@@ -69,8 +71,11 @@ const emptyDB = (): Database => ({
   prescriptions: [],
   ratings: [],
   audit: [],
+  admins: [],
+  verifications: [],
   session: null,
   doctorSession: null,
+  adminSession: null,
   onboardingSeen: false,
 });
 
@@ -178,6 +183,40 @@ function makePrescription(args: {
 }
 
 /** Builds the seeded world: a demo patient with history, plus a clinician queue. */
+/**
+ * The console roster CareNow ships with.
+ *
+ * `admin@carenow.health` is the address already credited as `verifiedBy` on
+ * every clinician in `lib/catalog.ts`, so the trail the console shows lines up
+ * with the roster instead of crediting a second, invented reviewer.
+ *
+ * Both accounts hold the same role and the same powers. There is no longer a
+ * founding "owner" seat — one role, one set of capabilities.
+ *
+ * Also used as the migration path for a stored document that predates admin
+ * seats — see `hydrate()`. Losing the seats would lock everyone out of the one
+ * screen that can hand them back.
+ */
+function defaultAdmins(now = new Date()): AdminUser[] {
+  return [
+    {
+      id: "adm-ifeoma",
+      fullName: "Ifeoma Adeyemi",
+      email: "admin@carenow.health",
+      baseRole: "staff",
+      grantedAt: new Date(now.getTime() - 300 * 86_400_000).toISOString(),
+    },
+    {
+      id: "adm-samuel",
+      fullName: "Samuel Okoro",
+      email: "credentialing@carenow.health",
+      baseRole: "staff",
+      grantedAt: new Date(now.getTime() - 120 * 86_400_000).toISOString(),
+      grantedBy: "admin@carenow.health",
+    },
+  ];
+}
+
 export function seedDB(now = new Date()): Database {
   const db = emptyDB();
   const taken = new Set<string>();
@@ -251,6 +290,10 @@ export function seedDB(now = new Date()): Database {
   });
 
   db.patients = [adaeze, bisi, musa, temilade];
+
+  // ---- CareNow operations staff --------------------------------------
+  db.admins = defaultAdmins(now);
+
 
   // ---- Upcoming, joinable consult for the demo patient ---------------
   // Two days out, paid, confirmed — this is the booking the demo lands on.
@@ -556,6 +599,90 @@ export function seedDB(now = new Date()): Database {
     db.audit.push(audit(now, "system", "system", "refund_issued", "booking", b.id, "Patient did not join"));
   }
 
+  // ---- Audit trail -----------------------------------------------------
+  // Derived from the rows this seed just created rather than hand-written, so
+  // the trail the console shows always describes the records it is next to.
+  // A compliance surface that opens empty reads as broken, and one with
+  // invented entries quietly stops matching the data.
+  const day = (iso: string | Date) => new Date(iso);
+
+  for (const p of db.patients) {
+    db.audit.push(audit(day(p.createdAt), "patient", p.id, "sign_up", "session", p.id));
+    if (p.consent) {
+      db.audit.push(
+        audit(day(p.consent.acceptedAt), "patient", p.id, "consent_accepted", "patient", p.id, `v${p.consent.version}`),
+      );
+    }
+  }
+
+  // The credential decisions behind the shipped roster, attributed to the same
+  // owner the catalogue credits in `verifiedBy`.
+  for (const doctor of db.doctors) {
+    if (!doctor.verified || !doctor.verification.verifiedAt) continue;
+    db.audit.push(
+      audit(
+        day(doctor.verification.verifiedAt),
+        "admin",
+        "adm-ifeoma",
+        "doctor_verified",
+        "doctor",
+        doctor.id,
+        `${doctor.fullName} · ${doctor.verification.licenceNumber}`,
+      ),
+    );
+  }
+
+  const alreadyLogged = new Set(db.audit.map((e) => `${e.action}:${e.subjectId}`));
+
+  for (const b of db.bookings) {
+    const created = new Date(new Date(b.createdAt).getTime());
+    for (const action of ["booking_created", "payment_captured"] as const) {
+      if (alreadyLogged.has(`${action}:${b.id}`)) continue;
+      if (action === "payment_captured" && b.payment.status !== "paid") continue;
+      db.audit.push(
+        audit(created, action === "payment_captured" ? "system" : "patient", action === "payment_captured" ? "system" : b.patientId, action, "booking", b.id),
+      );
+    }
+
+    if (b.status !== "completed") continue;
+    const start = day(b.startsAt);
+    db.audit.push(audit(start, "patient", b.patientId, "consult_started", "booking", b.id));
+    db.audit.push(
+      audit(new Date(start.getTime() + b.durationMins * 60_000), "doctor", b.doctorId, "consult_ended", "booking", b.id),
+    );
+  }
+
+  for (const rx of db.prescriptions) {
+    db.audit.push(
+      audit(day(rx.issuedAt), "doctor", rx.doctorId, "prescription_issued", "prescription", rx.id, rx.diagnosis),
+    );
+  }
+
+  for (const rating of db.ratings) {
+    db.audit.push(
+      audit(day(rating.createdAt), "patient", rating.patientId, "rating_submitted", "booking", rating.bookingId, `${rating.stars}★`),
+    );
+  }
+
+  // A clinician reading the history a patient chose to share: the read the
+  // NDPA trail most needs to be able to answer for.
+  const shared = db.bookings.find((b) => b.intake.attachProfileHistory && b.status === "completed");
+  if (shared) {
+    db.audit.push(
+      audit(
+        day(shared.startsAt),
+        "doctor",
+        shared.doctorId,
+        "record_viewed",
+        "patient",
+        shared.patientId,
+        "Shared health history",
+      ),
+    );
+  }
+
+  db.audit.sort((a, b) => a.at.localeCompare(b.at));
+
   return db;
 }
 
@@ -607,18 +734,97 @@ function persist() {
   }
 }
 
-/** Loads persisted state, migrating or reseeding when the shape has changed. */
+/**
+ * Replays credential decisions onto the catalogue.
+ *
+ * `initStore` re-takes `DOCTORS` on every load so fees, bios and the shipped
+ * verification state stay editorial. An admin's decision is not editorial — it
+ * is a record of something a human checked — so it is stored separately and
+ * replayed here, newest decision per doctor winning.
+ */
+export function applyVerifications(
+  doctors: Doctor[],
+  decisions: DoctorVerification[],
+): Doctor[] {
+  if (!decisions?.length) return doctors;
+  // Ordered by when the decision was made, and for two decisions inside the
+  // same millisecond — which happens whenever a reviewer corrects themselves
+  // immediately — by position in the trail, because the trail only ever
+  // appends. Relying on `sort` stability alone would leave that tie to the
+  // engine.
+  const ordered = decisions
+    .map((decision, index) => ({ decision, index }))
+    .sort(
+      (a, b) => a.decision.decidedAt.localeCompare(b.decision.decidedAt) || a.index - b.index,
+    );
+  const latest = new Map<string, DoctorVerification>();
+  for (const { decision } of ordered) latest.set(decision.doctorId, decision);
+  return doctors.map((doctor) => {
+    const decision = latest.get(doctor.id);
+    if (!decision) return doctor;
+    return decision.decision === "approved"
+      ? {
+          ...doctor,
+          verified: true,
+          verification: {
+            licenceNumber: decision.licenceNumber,
+            verifiedAt: decision.decidedAt,
+            verifiedBy: decision.decidedBy,
+          },
+        }
+      : { ...doctor, verified: false };
+  });
+}
+
+/**
+ * Brings a persisted document up to the shape the current build expects.
+ *
+ * The version check catches a schema change deliberately, but a stored document
+ * can still be missing a collection it claims to have: a build that wrote
+ * between two deploys, an interrupted write, or a field added in the same
+ * release. Trusting the blob means the first read of a missing collection is a
+ * `TypeError` — and because that read happens during the first render, the whole
+ * screen comes up blank with nothing in the UI to explain it.
+ *
+ * So every collection is defaulted rather than assumed. A partial document
+ * degrades to "empty" instead of crashing, and `persist()` writes the repaired
+ * shape straight back.
+ */
+function hydrate(parsed: Partial<Database>): Database {
+  const base = emptyDB();
+  return {
+    ...base,
+    ...parsed,
+    version: DB_VERSION,
+    // Doctor rows are always taken from the catalogue, then replayed with any
+    // credential decisions the document carries — see `applyVerifications`.
+    doctors: applyVerifications(DOCTORS, parsed.verifications ?? []),
+    patients: parsed.patients ?? [],
+    bookings: parsed.bookings ?? [],
+    prescriptions: parsed.prescriptions ?? [],
+    ratings: parsed.ratings ?? [],
+    audit: parsed.audit ?? [],
+    verifications: parsed.verifications ?? [],
+    // Missing is different to empty here: a document written before seats
+    // existed gets the shipped console roster, so the dashboard stays
+    // reachable. An empty array is respected — that is somebody having revoked
+    // every seat on purpose.
+    admins: parsed.admins ?? defaultAdmins(),
+  };
+}
+
+/** Loads persisted state, repairing or reseeding when the shape has changed. */
 export function initStore(): void {
   if (typeof window === "undefined" || ready) return;
   try {
     const raw = window.localStorage.getItem(DB_KEY);
     if (raw) {
-      const parsed = JSON.parse(raw) as Database;
+      const parsed = JSON.parse(raw) as Partial<Database>;
       if (parsed?.version === DB_VERSION) {
-        db = parsed;
-        // Always take the newest catalogue definition (fees, bios, verification).
-        db.doctors = DOCTORS;
+        db = hydrate(parsed);
       } else {
+        // A different shape: reseed rather than guess at a migration. The next
+        // persist writes the current shape over it.
         db = seedDB();
         persisted = raw; // force a write of the migrated shape
       }
