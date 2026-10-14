@@ -289,6 +289,46 @@ alter table prescriptions  enable row level security;
 alter table ratings        enable row level security;
 alter table audit_log      enable row level security;
 
+-- ---- auth → profile provisioning -------------------------------------------
+-- Every Supabase Auth user gets a profiles row from this trigger (same code as
+-- `supabase/auth_setup.sql`, which applies it to existing projects). There is
+-- deliberately no INSERT policy on profiles: a client must not be able to
+-- create its own row with role = 'doctor'.
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.profiles (id, role, full_name, email, phone)
+  values (
+    new.id,
+    'patient',
+    coalesce(
+      nullif(trim(new.raw_user_meta_data ->> 'full_name'), ''),
+      split_part(coalesce(new.email, 'patient'), '@', 1)
+    ),
+    new.email,
+    new.phone
+  )
+  on conflict (id) do nothing;
+
+  insert into public.patient_health (patient_id)
+  values (new.id)
+  on conflict (patient_id) do nothing;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
 -- ---- profiles --------------------------------------------------------------
 
 create policy "read own profile"
@@ -519,14 +559,11 @@ begin
     p_reason, coalesce(p_notes, ''), p_duration, p_severity, coalesce(p_share_history, true),
     v_doctor.consultation_fee, v_doctor.currency,
     v_slot.starts_at - interval '30 minutes',
-    coalesce(
-      (select reminder_channels from profiles where id = auth.uid()),
-      '{email}'::reminder_channel[]
-    )
+    '{email}'::reminder_channel[]
   ) returning * into v_booking;
 
   insert into audit_log (actor_id, actor_type, action, subject_type, subject_id, detail)
-  values (auth.uid(), 'patient', 'booking_created', 'booking', v_booking.id, v_doctor.full_name);
+  values (auth.uid(), 'patient', 'booking_created', 'booking', v_booking.id, null);
 
   return v_booking;
 end;

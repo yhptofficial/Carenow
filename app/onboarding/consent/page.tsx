@@ -129,7 +129,7 @@ function ConsentScreen() {
           disabled={!canContinue}
           onClick={() => {
             store.acceptConsent({ healthDataConsent: health, recordingConsent: recording });
-            router.replace("/");
+            router.replace("/home");
           }}
         >
           Agree and continue

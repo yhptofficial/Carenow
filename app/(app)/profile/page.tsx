@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCareNow, useStore } from "@/lib/store";
+import { signOutOfSupabase } from "@/lib/supabase/auth";
 import { ScreenHeader } from "@/components/AppHeader";
 import { Avatar, Button, Card, Chevron, Notice, Sheet, useToast } from "@/components/ui";
 import {
@@ -215,7 +216,8 @@ export default function ProfilePage() {
               variant="danger"
               onClick={() => {
                 store.signOut();
-                router.replace("/");
+                void signOutOfSupabase();
+                router.replace("/onboarding");
               }}
             >
               Sign out
@@ -245,9 +247,10 @@ export default function ProfilePage() {
               variant="danger"
               onClick={() => {
                 store.reset();
+                void signOutOfSupabase();
                 setShowReset(false);
                 toast("Demo data rebuilt from scratch.", "ok");
-                router.replace("/");
+                router.replace("/onboarding");
               }}
             >
               Reset everything

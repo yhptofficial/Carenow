@@ -37,7 +37,7 @@ export default function OfflinePage() {
       </ul>
 
       <Link
-        href="/"
+        href="/onboarding"
         className="mt-6 inline-flex h-11 items-center rounded-pill bg-primary px-6 text-[14px] font-semibold text-white pressable"
       >
         Try again

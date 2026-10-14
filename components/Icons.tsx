@@ -199,6 +199,25 @@ export function LockIcon(props: IconProps) {
   );
 }
 
+export function EyeIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M2.5 12S6 5.75 12 5.75 21.5 12 21.5 12 18 18.25 12 18.25 2.5 12 2.5 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </Svg>
+  );
+}
+
+export function EyeOffIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4 4l16 16" />
+      <path d="M10.6 6.1A9.8 9.8 0 0 1 12 6c6 0 9.5 6 9.5 6a17.6 17.6 0 0 1-2.7 3.4M6.1 8A16.9 16.9 0 0 0 2.5 12S6 18 12 18c1.5 0 2.9-.4 4.1-1" />
+      <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
+    </Svg>
+  );
+}
+
 export function BellIcon(props: IconProps) {
   return (
     <Svg {...props}>

@@ -13,7 +13,7 @@ import { CalendarIcon, FindIcon, HomeIcon, ProfileIcon } from "./Icons";
  */
 
 const ITEMS = [
-  { href: "/", label: "Home", Icon: HomeIcon },
+  { href: "/home", label: "Home", Icon: HomeIcon },
   { href: "/find", label: "Find", Icon: FindIcon },
   { href: "/bookings", label: "Bookings", Icon: CalendarIcon },
   { href: "/profile", label: "Profile", Icon: ProfileIcon },
@@ -58,6 +58,6 @@ export function BottomNav() {
 }
 
 function isActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
+  if (href === "/home") return pathname === "/home";
   return pathname === href || pathname.startsWith(`${href}/`);
 }

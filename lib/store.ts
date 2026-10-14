@@ -17,6 +17,12 @@ import {
 } from "./db";
 import { SPECIALTIES, specialtyLabel } from "./catalog";
 import {
+  syncBookingCancelled,
+  syncBookingCreated,
+  syncBookingPaid,
+  syncBookingRescheduled,
+} from "./supabase/bookings";
+import {
   availability as buildAvailability,
   nextAvailability,
   rota,
@@ -58,6 +64,9 @@ import type {
 export type CareNowErrorCode =
   | "slot_taken"
   | "not_signed_in"
+  | "invalid_password"
+  | "account_exists"
+  | "account_not_found"
   | "already_paid"
   | "invalid_card"
   | "not_found"
@@ -238,6 +247,93 @@ function subscribeOnClient(listener: () => void) {
 export function createStoreApi(db: Database, ready: boolean) {
   const session = db.session;
 
+  type AuthInput = { email?: string; phone?: string; name?: string; password?: string };
+
+  /**
+   * Sign-in and sign-up are deliberately separate doors into the same session:
+   * sign-in never creates an account, and sign-up never reuses one. An unknown
+   * identifier in one mode points the patient at the other instead of quietly
+   * doing the wrong thing with a health record attached.
+   */
+  const authenticate = (input: AuthInput, intent: "signIn" | "signUp"): PatientProfile => {
+    const email = input.email?.trim().toLowerCase() || undefined;
+    const phone = input.phone?.trim() || undefined;
+    const password = input.password ?? "";
+
+    if (!password) {
+      throw new CareNowError(
+        intent === "signUp" ? "Set a password to create your account." : "Enter your password to sign in.",
+        "invalid_password",
+      );
+    }
+    if (password.length < 8) {
+      throw new CareNowError("Use at least 8 characters for your password.", "invalid_password");
+    }
+
+    const existing = db.patients.find(
+      (p) => (email && p.email?.toLowerCase() === email) || (phone && p.phone === phone),
+    );
+
+    if (!existing) {
+      if (intent === "signIn") {
+        throw new CareNowError(
+          "No account found for this email or mobile number. Create an account instead.",
+          "account_not_found",
+        );
+      }
+      const name = input.name?.trim() || nameFromIdentity(email, phone);
+      const passwordHash = hashPassword(password);
+      const created: PatientProfile = {
+        id: uid("pt"),
+        role: "patient",
+        fullName: name,
+        email,
+        phone,
+        passwordHash,
+        location: "Lagos",
+        allergies: [],
+        conditions: [],
+        currentMedications: [],
+        accent: accentFor(name),
+        reminderChannels: ["email", "sms"],
+        createdAt: new Date().toISOString(),
+      };
+      mutate((d) => {
+        d.patients.push(created);
+        d.session = asSession(created);
+        d.audit.push(auditEntry("patient", created.id, "sign_up", "session", created.id, "New account"));
+      });
+      return asSession(created);
+    }
+
+    if (intent === "signUp") {
+      throw new CareNowError(
+        "An account already exists for this email or mobile number. Sign in instead.",
+        "account_exists",
+      );
+    }
+
+    // An account with a password on file must prove it. Accounts created
+    // before passwords existed have none — the password given here
+    // becomes theirs (see `passwordHash` on PatientProfile).
+    if (existing.passwordHash) {
+      if (hashPassword(password) !== existing.passwordHash) {
+        throw new CareNowError(
+          "That password doesn't match this account. Check it and try again.",
+          "invalid_password",
+        );
+      }
+    }
+    const passwordHash = existing.passwordHash ?? hashPassword(password);
+    mutate((d) => {
+      const record = d.patients.find((p) => p.id === existing.id);
+      if (record) record.passwordHash = passwordHash;
+      d.session = asSession(existing);
+      d.audit.push(auditEntry("patient", existing.id, "sign_in", "session", existing.id));
+    });
+    return asSession(existing);
+  };
+
   return {
       ready,
       db,
@@ -302,51 +398,94 @@ export function createStoreApi(db: Database, ready: boolean) {
 
       /* ---------------- Auth & profile ---------------- */
 
-      signIn(input: { email?: string; phone?: string; name?: string }): PatientProfile {
-        const email = input.email?.trim().toLowerCase() || undefined;
-        const phone = input.phone?.trim() || undefined;
+      signIn(input: AuthInput): PatientProfile {
+        return authenticate(input, "signIn");
+      },
 
-        const existing = db.patients.find(
-          (p) =>
-            (email && p.email?.toLowerCase() === email) || (phone && p.phone === phone),
-        );
+      signUp(input: AuthInput): PatientProfile {
+        return authenticate(input, "signUp");
+      },
 
-        if (existing) {
+      /**
+       * Mirror a Supabase Auth session into the local store.
+       *
+       * The rest of the app reads `db.session`, so a Supabase user gets a
+       * local profile row (keyed by their Supabase user id) and a session —
+       * bookings and records created locally attach to it as usual. Passing
+       * null ends the local session, but only if it was a Supabase one: a
+       * local/demo session is not Supabase's to end.
+       */
+      syncExternalSession(
+        profile: {
+          id: string;
+          fullName: string;
+          email?: string;
+          phone?: string;
+          consent?: ConsentRecord;
+        } | null,
+      ): void {
+        if (!profile) {
+          if (session?.authProvider !== "supabase") return;
           mutate((d) => {
-            d.session = existing;
-            d.audit.push(auditEntry("patient", existing.id, "sign_in", "session", existing.id));
+            d.session = null;
           });
-          return existing;
+          return;
         }
 
-        const name = input.name?.trim() || nameFromIdentity(email, phone);
-        const created: PatientProfile = {
-          id: uid("pt"),
-          role: "patient",
-          fullName: name,
-          email,
-          phone,
-          location: "Lagos",
-          allergies: [],
-          conditions: [],
-          currentMedications: [],
-          accent: accentFor(name),
-          reminderChannels: ["email", "sms"],
-          createdAt: new Date().toISOString(),
-        };
+        const existing = db.patients.find(
+          (p) => p.id === profile.id || (profile.email && p.email?.toLowerCase() === profile.email.toLowerCase()),
+        );
+        const mirrored: PatientProfile = existing
+          ? {
+              ...existing,
+              // Keep the existing local id: bookings and records point at it.
+              id: existing.id,
+              fullName: profile.fullName || existing.fullName,
+              email: profile.email ?? existing.email,
+              phone: profile.phone ?? existing.phone,
+              consent: profile.consent ?? existing.consent,
+              authProvider: "supabase",
+            }
+          : {
+              id: profile.id,
+              role: "patient",
+              fullName: profile.fullName,
+              email: profile.email,
+              phone: profile.phone,
+              location: "Lagos",
+              allergies: [],
+              conditions: [],
+              currentMedications: [],
+              accent: accentFor(profile.fullName),
+              consent: profile.consent,
+              reminderChannels: ["email"],
+              authProvider: "supabase",
+              createdAt: new Date().toISOString(),
+            };
+        // The auth bridge and the sign-in screen can both sync the same
+        // session; the second one is a no-op rather than a second audit entry.
+        if (
+          session?.authProvider === "supabase" &&
+          session.id === mirrored.id &&
+          session.email === mirrored.email &&
+          session.fullName === mirrored.fullName
+        ) {
+          return;
+        }
         mutate((d) => {
-          d.patients.push(created);
-          d.session = created;
-          d.audit.push(auditEntry("patient", created.id, "sign_in", "session", created.id, "New account"));
+          const idx = d.patients.findIndex((p) => p.id === existing?.id || p.id === profile.id);
+          if (idx >= 0) d.patients[idx] = mirrored;
+          else d.patients.push(mirrored);
+          d.session = asSession(mirrored);
+          d.audit.push(auditEntry("patient", mirrored.id, "sign_in", "session", mirrored.id, "Supabase"));
         });
-        return created;
       },
 
       signInDemo(): void {
         const demo = db.patients.find((p) => p.email === DEMO_PATIENT_EMAIL) ?? seedFallback();
         mutate((d) => {
           if (!d.patients.some((p) => p.id === demo.id)) d.patients.push(demo);
-          d.session = demo;
+          d.session = asSession(demo);
           d.audit.push(auditEntry("patient", demo.id, "sign_in", "session", demo.id, "Demo account"));
         });
       },
@@ -387,7 +526,7 @@ export function createStoreApi(db: Database, ready: boolean) {
         mutate((d) => {
           const p = d.patients.find((x) => x.id === session.id);
           if (p) Object.assign(p, patch);
-          d.session = p ? { ...p } : d.session;
+          d.session = p ? asSession(p) : d.session;
           d.audit.push(
             auditEntry("patient", session.id, "profile_updated", "patient", session.id, Object.keys(patch).join(", ")),
           );
@@ -457,6 +596,8 @@ export function createStoreApi(db: Database, ready: boolean) {
             auditEntry("patient", session.id, "booking_created", "booking", booking.id, doctor.fullName),
           );
         });
+        // Mirror into Supabase for Supabase-signed-in patients (best-effort).
+        if (session.authProvider === "supabase") void syncBookingCreated(booking);
         return booking;
       },
 
@@ -534,6 +675,7 @@ export function createStoreApi(db: Database, ready: boolean) {
           b.status = "confirmed";
           d.audit.push(auditEntry("patient", session.id, "payment_captured", "booking", bookingId));
         });
+        if (session.authProvider === "supabase" && booking) void syncBookingPaid(booking);
       },
 
       cancelBooking(bookingId: string, reason: string): void {
@@ -558,6 +700,7 @@ export function createStoreApi(db: Database, ready: boolean) {
             d.audit.push(auditEntry("system", "system", "refund_issued", "booking", bookingId));
           }
         });
+        if (session.authProvider === "supabase" && booking) void syncBookingCancelled(booking, reason);
       },
 
       rescheduleBooking(bookingId: string, newSlotId: string): void {
@@ -586,6 +729,9 @@ export function createStoreApi(db: Database, ready: boolean) {
             auditEntry("patient", session.id, "booking_rescheduled", "booking", bookingId, timeLabel(slot.startsAt)),
           );
         });
+        if (session.authProvider === "supabase" && booking) {
+          void syncBookingRescheduled({ ...booking, slotId: slot.id, startsAt: slot.startsAt, durationMins: slot.durationMins });
+        }
       },
 
       /* ---------------- Consultation ---------------- */
@@ -864,6 +1010,33 @@ function nameFromIdentity(email?: string, phone?: string): string {
     return local.replace(/\b\w/g, (c) => c.toUpperCase());
   }
   return "New patient";
+}
+
+/**
+ * Prototype password hashing (cyrb53, double-width).
+ *
+ * This only exists so the demo never stores a password in plain text. It is
+ * NOT a credential-grade hash — production auth (Supabase) hashes server-side
+ * with a slow, salted KDF, and this function goes away with the local store.
+ */
+function hashPassword(password: string): string {
+  let h1 = 0xdeadbeef;
+  let h2 = 0x41c6ce57;
+  const input = `carenow:${password}`;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return `${(h2 >>> 0).toString(16).padStart(8, "0")}${(h1 >>> 0).toString(16).padStart(8, "0")}`;
+}
+
+/** The session copy of a profile: same shape, minus the credential hash. */
+function asSession(profile: PatientProfile): PatientProfile {
+  const { passwordHash: _passwordHash, ...session } = profile;
+  return session;
 }
 
 function seedFallback(): PatientProfile {

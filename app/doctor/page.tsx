@@ -137,7 +137,7 @@ export default function DoctorSignInPage() {
       </div>
 
       <footer className="py-6 text-center">
-        <Link href="/" className="text-[12px] font-medium text-ink-muted underline">
+        <Link href="/onboarding" className="text-[12px] font-medium text-ink-muted underline">
           I&apos;m a patient — go to CareNow
         </Link>
       </footer>
